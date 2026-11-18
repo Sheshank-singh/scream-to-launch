@@ -12,12 +12,13 @@ Headphones help, so the engine sound doesn't feed the microphone.
 
 ## Enable GitHub Pages
 
-`.github/workflows/pages.yml` deploys the site on every push to `main`.
+`.github/workflows/pages.yml` deploys the site on every push to `main`. GitHub will not publish until Pages is turned on once. The token that pushes this repo cannot flip that setting.
 
 1. Open **Settings → Pages**.
 2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+3. If a workflow run already failed with "Pages site not found", open the **Actions** tab and re-run **Deploy GitHub Pages**.
 
-If Actions isn't available, deploy the branch instead:
+If GitHub Actions is not offered as a source, use a branch deploy instead:
 
 1. **Settings → Pages**.
 2. **Deploy from a branch**.
