@@ -1,8 +1,10 @@
+import { COUNTRIES, flagEmoji, searchCountries } from '../js/countries.js';
+import { STORAGE_KEY } from '../js/config.js';
 import { createGate, rmsToDbfs, simPercentToDb, thrustFromDb } from '../js/gate.js';
 import { createLeaderboard } from '../js/leaderboard.js';
 import { altitudeCurve, createFlight, resetFlight, stepFlight } from '../js/physics.js';
 import { createStore } from '../js/storage.js';
-import { sanitizeCity, shareIntent, shareLine } from '../js/share.js';
+import { sanitizePlace, shareIntent, shareLine } from '../js/share.js';
 import { DISTANCE, formatAltitude, titleFor } from '../js/zones.js';
 
 function assert(condition, message) {
@@ -158,15 +160,23 @@ assert(formatAltitude(54_600_000_000).label === '54.6 million km', formatAltitud
 assert(formatAltitude(DISTANCE.mars).label === '1.5 AU', formatAltitude(DISTANCE.mars).label);
 assert(formatAltitude(DISTANCE.pluto).label.endsWith('AU'), formatAltitude(DISTANCE.pluto).label);
 
-const line = shareLine({ altitudeLabel: '128 km', city: 'Mumbai' });
+const line = shareLine({ altitudeLabel: '128 km', country: 'India', flag: '🇮🇳' });
 assert(
-  line === 'I screamed my rocket to 128 km from Mumbai 🚀 Can you beat me? 👇\nhttps://sheshank-singh.github.io/scream-to-launch/',
+  line === 'I screamed my rocket to 128 km from India 🇮🇳 🚀 Can you beat me? 👇\nhttps://sheshank-singh.github.io/scream-to-launch/',
   line,
 );
 assert(shareIntent(line).startsWith('https://x.com/intent/post?text='), 'intent url');
 assert(decodeURIComponent(shareIntent(line).split('text=')[1]) === line, 'intent text');
-assert(sanitizeCity('  Pune \n west  ').length <= 24, 'city length');
-assert(!sanitizeCity('  Pune \n west  ').includes('\n'), 'city newline');
+assert(sanitizePlace('  Côte d\'Ivoire \n ').length <= 40, 'place length');
+assert(!sanitizePlace('  Japan \n ').includes('\n'), 'place newline');
+assert(flagEmoji('IN') === '🇮🇳', flagEmoji('IN'));
+assert(flagEmoji('US') === '🇺🇸', flagEmoji('US'));
+const codes = new Set(COUNTRIES.map((country) => country.code));
+assert(codes.size === COUNTRIES.length && codes.size >= 240, `country count ${codes.size}`);
+assert(searchCountries('')[0].code === 'IN', 'India is pinned first');
+assert(searchCountries('')[1].code === 'US' && searchCountries('')[2].code === 'GB', 'USA and UK follow India');
+assert(searchCountries('japan').some((country) => country.code === 'JP'), 'search finds Japan');
+assert(searchCountries('usa').some((country) => country.code === 'US'), 'usa alias');
 
 const board = createLeaderboard(createStore(memory()));
 const first = {
@@ -178,14 +188,21 @@ const first = {
 };
 assert(board.noteApex(first).isBest, 'first is best');
 assert(!board.noteApex({ ...first, id: 'b', altitudeM: 500 }).isBest, 'lower is not best');
-const mumbai = board.submitRun({ ...first, city: 'Mumbai' });
-assert(mumbai.ok && mumbai.cityBest, 'city best');
-const delhi = board.submitRun({ ...first, city: 'Delhi', previousCity: 'Mumbai' });
-assert(delhi.ok, 'moved city');
-assert(board.cityBoard('Mumbai').entries.length === 0, 'previous city cleared when it was this run');
-assert(board.cityBoard('Delhi').entries.length === 1, 'new city kept');
-assert(board.overview().overall.city === 'Delhi', 'overall city follows the run');
+const india = board.submitRun({ ...first, country: 'India', countryCode: 'IN', flag: '🇮🇳' });
+assert(india.ok && india.countryBest, 'country best');
+const japan = board.submitRun({
+  ...first,
+  country: 'Japan',
+  countryCode: 'JP',
+  flag: '🇯🇵',
+  previousCountry: 'India',
+});
+assert(japan.ok, 'moved country');
+assert(board.countryBoard('India').entries.length === 0, 'previous country cleared when it was this run');
+assert(board.countryBoard('Japan').entries.length === 1, 'new country kept');
+assert(board.overview().overall.country === 'Japan', 'overall country follows the run');
 assert(board.overview().source === 'local', 'local source');
+assert(board.lastCountry() === 'JP', `remembered ${board.lastCountry()}`);
 
 const older = {
   id: 'old',
@@ -194,9 +211,32 @@ const older = {
   tagline: 'clouds',
   at: '2026-11-01T00:00:00.000Z',
 };
-board.submitRun({ ...older, city: 'Mumbai' });
-board.submitRun({ ...first, id: 'c', altitudeM: 800, city: 'Mumbai', previousCity: 'Delhi' });
-assert(board.cityBoard('Mumbai').entries[0].altitudeM === 5000, 'older higher city best remains');
+board.submitRun({ ...older, country: 'India', countryCode: 'IN', flag: '🇮🇳' });
+board.submitRun({
+  ...first,
+  id: 'c',
+  altitudeM: 800,
+  country: 'India',
+  countryCode: 'IN',
+  flag: '🇮🇳',
+  previousCountry: 'Japan',
+});
+assert(board.countryBoard('India').entries[0].altitudeM === 5000, 'older higher country best remains');
+
+const legacy = memory();
+legacy.setItem(STORAGE_KEY, JSON.stringify({
+  version: 1,
+  overall: { id: 'o', altitudeM: 10, title: 't', tagline: 'g', city: 'Mumbai', at: '2026-01-01T00:00:00.000Z' },
+  cities: {
+    Mumbai: { id: 'o', altitudeM: 10, title: 't', tagline: 'g', city: 'Mumbai', at: '2026-01-01T00:00:00.000Z' },
+  },
+  lastCity: 'Mumbai',
+}));
+const migratedBoard = createLeaderboard(createStore(legacy));
+const migrated = migratedBoard.overview();
+assert(migrated.overall.country === 'Mumbai', 'old overall city becomes a country');
+assert(migrated.countries.some((entry) => entry.country === 'Mumbai'), 'old city best is kept');
+assert(migratedBoard.lastCountry() === 'Mumbai', 'old last city is kept');
 
 console.log('flight tests passed');
 console.log(JSON.stringify({

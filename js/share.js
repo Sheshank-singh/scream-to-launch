@@ -3,20 +3,25 @@ import { mulberry32 } from './util.js';
 
 const FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
-export function shareLine({ altitudeLabel, city }) {
-  return `I screamed my rocket to ${altitudeLabel} from ${city} 🚀 Can you beat me? 👇\n${PAGE_URL}`;
+export function placeLabel({ country, flag }) {
+  if (!country) return '';
+  return flag ? `${country} ${flag}` : country;
+}
+
+export function shareLine({ altitudeLabel, country, flag }) {
+  return `I screamed my rocket to ${altitudeLabel} from ${placeLabel({ country, flag })} 🚀 Can you beat me? 👇\n${PAGE_URL}`;
 }
 
 export function shareIntent(text) {
   return `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
 }
 
-export function sanitizeCity(value) {
+export function sanitizePlace(value) {
   return String(value || '')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 24);
+    .slice(0, 40);
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -98,7 +103,7 @@ function fitSize(ctx, text, weight, maxWidth, start, min) {
 }
 
 /** Draw the 1200×675 share card. Stars are seeded so redraws don't flicker. */
-export function drawShareCard(canvas, { value, unit, title, tagline, city }) {
+export function drawShareCard(canvas, { value, unit, title, tagline, country, flag }) {
   const ctx = canvas.getContext('2d');
   const width = 1200;
   const height = 675;
@@ -170,8 +175,8 @@ export function drawShareCard(canvas, { value, unit, title, tagline, city }) {
   ctx.fillText(title, 72, titleY);
 
   ctx.fillStyle = '#d5dbe8';
-  ctx.font = `600 28px ${FONT}`;
-  const place = city ? `from ${city}` : 'pick a city';
+  ctx.font = `600 28px ${FONT}, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"`;
+  const place = country ? `from ${placeLabel({ country, flag })}` : 'pick a country';
   ctx.fillText(place, 72, titleY + 48);
 
   ctx.fillStyle = '#9aa6bd';

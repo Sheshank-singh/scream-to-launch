@@ -1,7 +1,46 @@
 import { STORAGE_KEY } from './config.js';
 
+function normalizeEntry(entry, fallbackName) {
+  if (!entry || typeof entry !== 'object') return null;
+  const country = entry.country || entry.city || fallbackName || '';
+  return {
+    ...entry,
+    country,
+    countryCode: entry.countryCode || '',
+    flag: entry.flag || '',
+  };
+}
+
 function emptyState() {
-  return { version: 1, overall: null, cities: {}, lastCity: '' };
+  return { version: 2, overall: null, countries: {}, lastCountry: '' };
+}
+
+/**
+ * Reads v1 city boards and rewrites them as countries.
+ * An old `city` string is kept as the country name so a saved best is not dropped.
+ */
+export function migrateState(parsed) {
+  if (!parsed || typeof parsed !== 'object') return emptyState();
+  const countries = {};
+  const source = parsed.countries && typeof parsed.countries === 'object' ? parsed.countries : {};
+  const legacy = parsed.cities && typeof parsed.cities === 'object' ? parsed.cities : {};
+  for (const [name, entry] of Object.entries(legacy)) {
+    const normalized = normalizeEntry(entry, name);
+    if (normalized) countries[normalized.country || name] = normalized;
+  }
+  for (const [name, entry] of Object.entries(source)) {
+    const normalized = normalizeEntry(entry, name);
+    if (normalized) countries[normalized.country || name] = normalized;
+  }
+  const lastCountry = typeof parsed.lastCountry === 'string' && parsed.lastCountry
+    ? parsed.lastCountry
+    : (typeof parsed.lastCity === 'string' ? parsed.lastCity : '');
+  return {
+    version: 2,
+    overall: normalizeEntry(parsed.overall, ''),
+    countries,
+    lastCountry,
+  };
 }
 
 export function createStore(backend) {
@@ -11,21 +50,14 @@ export function createStore(backend) {
     try {
       const raw = storage.getItem(STORAGE_KEY);
       if (!raw) return emptyState();
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return emptyState();
-      return {
-        version: 1,
-        overall: parsed.overall || null,
-        cities: parsed.cities && typeof parsed.cities === 'object' ? parsed.cities : {},
-        lastCity: typeof parsed.lastCity === 'string' ? parsed.lastCity : '',
-      };
+      return migrateState(JSON.parse(raw));
     } catch {
       return emptyState();
     }
   }
 
   function write(state) {
-    storage.setItem(STORAGE_KEY, JSON.stringify(state));
+    storage.setItem(STORAGE_KEY, JSON.stringify({ ...state, version: 2 }));
   }
 
   return {
@@ -33,12 +65,12 @@ export function createStore(backend) {
     overall() {
       return read().overall;
     },
-    lastCity() {
-      return read().lastCity || '';
+    lastCountry() {
+      return read().lastCountry || '';
     },
-    setLastCity(city) {
+    setLastCountry(value) {
       const state = read();
-      state.lastCity = city || '';
+      state.lastCountry = value || '';
       write(state);
     },
     setOverall(entry) {
@@ -46,29 +78,29 @@ export function createStore(backend) {
       state.overall = entry;
       write(state);
     },
-    cityBest(city) {
-      return read().cities[city] || null;
+    countryBest(country) {
+      return read().countries[country] || null;
     },
-    setCityBest(city, entry) {
+    setCountryBest(country, entry) {
       const state = read();
-      const previous = state.cities[city];
+      const previous = state.countries[country];
       if (!previous || entry.altitudeM > previous.altitudeM) {
-        state.cities[city] = entry;
+        state.countries[country] = entry;
         write(state);
         return true;
       }
       return false;
     },
-    clearCityIfRun(city, id) {
-      if (!city) return;
+    clearCountryIfRun(country, id) {
+      if (!country) return;
       const state = read();
-      if (state.cities[city]?.id === id) {
-        delete state.cities[city];
+      if (state.countries[country]?.id === id) {
+        delete state.countries[country];
         write(state);
       }
     },
-    allCities() {
-      return read().cities;
+    allCountries() {
+      return read().countries;
     },
   };
 }

@@ -87,11 +87,14 @@
       <p id="apex-tag" class="lede"></p>
       <p id="apex-note" class="fine"></p>
       <canvas id="share-card" class="share-card" width="1200" height="675" aria-label="Share card"></canvas>
-      <p class="field-label">Your city</p>
-      <div id="city-chips" class="chips" role="group" aria-label="City"></div>
+      <label class="field-label" for="country-search">Your country</label>
+      <div class="country-picker">
+        <input id="country-search" type="text" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="country-list" placeholder="Search countries" autocomplete="off" enterkeyhint="search">
+        <ul id="country-list" class="country-list" role="listbox" hidden></ul>
+      </div>
       <div id="other-wrap" class="other-wrap" hidden>
-        <label class="sr" for="other-city">City name</label>
-        <input id="other-city" type="text" maxlength="24" placeholder="Type your city" autocomplete="off" enterkeyhint="done">
+        <label class="sr" for="other-country">Country or place</label>
+        <input id="other-country" type="text" maxlength="40" placeholder="Type a country or place" autocomplete="off" enterkeyhint="done">
       </div>
       <div class="actions">
         <button id="download" class="btn primary" type="button" disabled>Download share card</button>
@@ -109,7 +112,7 @@
   <section id="bests" class="overlay" hidden>
     <div class="panel">
       <p class="eyebrow">On this device</p>
-      <h2>Your bests</h2>
+      <h2>Best per country</h2>
       <div id="bests-list" class="bests-list"></div>
       <p id="bests-note" class="fine"></p>
       <button id="bests-back" class="btn" type="button">Back</button>

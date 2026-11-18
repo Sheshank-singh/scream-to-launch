@@ -1,10 +1,11 @@
-import { CITIES, OTHER_CITY } from './config.js';
+import { OTHER_PLACE } from './config.js';
+import { countryByCode, countryByName, searchCountries } from './countries.js';
 import { createAudio, MIC_CONSTRAINTS } from './audio.js';
 import { createGate, dbToSimPercent, simPercentToDb } from './gate.js';
 import { createLeaderboard } from './leaderboard.js';
 import { createFlight, resetFlight, stepFlight } from './physics.js';
 import { createRenderer } from './render.js';
-import { drawShareCard, sanitizeCity, shareIntent, shareLine } from './share.js';
+import { drawShareCard, placeLabel, sanitizePlace, shareIntent, shareLine } from './share.js';
 import { formatWhen } from './util.js';
 import { formatAltitude, remainingLabel, titleFor, zoneAt } from './zones.js';
 
@@ -44,9 +45,10 @@ const apexUnit = document.querySelector('#apex-unit');
 const apexTitle = document.querySelector('#apex-title');
 const apexTag = document.querySelector('#apex-tag');
 const apexNote = document.querySelector('#apex-note');
-const cityChips = document.querySelector('#city-chips');
+const countrySearch = document.querySelector('#country-search');
+const countryList = document.querySelector('#country-list');
 const otherWrap = document.querySelector('#other-wrap');
-const otherInput = document.querySelector('#other-city');
+const otherInput = document.querySelector('#other-country');
 const shareCard = document.querySelector('#share-card');
 const shareX = document.querySelector('#share-x');
 const downloadBtn = document.querySelector('#download');
@@ -96,29 +98,48 @@ function show(screen) {
   calibrate.hidden = screen !== 'calibrating';
 }
 
-function selectedCity() {
-  const pressed = cityChips.querySelector('[aria-pressed="true"]');
-  if (!pressed) return '';
-  if (pressed.dataset.city === OTHER_CITY) return sanitizeCity(otherInput.value);
-  return pressed.dataset.city;
+let pickedCountry = null;
+let countryHighlight = 0;
+
+function resolveSavedCountry(value) {
+  if (!value) return null;
+  if (value.startsWith('other:')) {
+    return { other: true, code: '', name: value.slice(6), flag: '' };
+  }
+  return countryByCode(value) || countryByName(value) || { other: true, code: '', name: value, flag: '' };
+}
+
+function currentCountry() {
+  if (!pickedCountry) return null;
+  if (pickedCountry.other) {
+    const name = sanitizePlace(otherInput.value);
+    if (!name) return null;
+    return { code: '', name, flag: '', other: true };
+  }
+  return pickedCountry;
 }
 
 function renderCard() {
   if (!run) return;
   const formatted = formatAltitude(run.altitudeM);
-  const city = selectedCity();
+  const choice = currentCountry();
   drawShareCard(shareCard, {
     value: formatted.value,
     unit: formatted.unit,
     title: run.title,
     tagline: run.tagline,
-    city,
+    country: choice?.name || '',
+    flag: choice?.flag || '',
   });
-  const ready = Boolean(city);
+  const ready = Boolean(choice?.name);
   downloadBtn.disabled = !ready;
   shareX.classList.toggle('is-disabled', !ready);
   if (ready) {
-    shareX.href = shareIntent(shareLine({ altitudeLabel: formatted.label, city }));
+    shareX.href = shareIntent(shareLine({
+      altitudeLabel: formatted.label,
+      country: choice.name,
+      flag: choice.flag,
+    }));
     shareX.setAttribute('aria-disabled', 'false');
   } else {
     shareX.href = '#';
@@ -126,38 +147,94 @@ function renderCard() {
   }
 }
 
-function paintCities(preselect) {
-  cityChips.replaceChildren();
-  const choices = [...CITIES, OTHER_CITY];
-  for (const city of choices) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'chip';
-    button.dataset.city = city;
-    button.textContent = city;
-    button.setAttribute('aria-pressed', city === preselect ? 'true' : 'false');
-    button.addEventListener('click', () => {
-      for (const chip of cityChips.querySelectorAll('.chip')) {
-        chip.setAttribute('aria-pressed', chip === button ? 'true' : 'false');
-      }
-      const other = city === OTHER_CITY;
-      otherWrap.hidden = !other;
-      if (other) otherInput.focus();
-      commitCity();
-    });
-    cityChips.append(button);
-  }
-  otherWrap.hidden = preselect !== OTHER_CITY;
+function setListOpen(isOpen) {
+  countryList.hidden = !isOpen;
+  countrySearch.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 }
 
-function commitCity() {
-  const city = selectedCity();
+function paintCountryList() {
+  const query = countrySearch.value.trim();
+  const searching = query && query !== displayOf(pickedCountry);
+  const matches = searchCountries(searching ? query : '');
+  countryList.replaceChildren();
+  const rows = matches.map((country) => ({ ...country, other: false }));
+  rows.push({ code: '', name: OTHER_PLACE, flag: '', other: true });
+  if (!rows.length) {
+    countryList.append(text('li', 'country-empty', 'No countries match. Choose Other.'));
+    countryHighlight = 0;
+    return;
+  }
+  if (countryHighlight >= rows.length) countryHighlight = 0;
+  rows.forEach((country, index) => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', index === countryHighlight ? 'true' : 'false');
+    button.textContent = country.other ? 'Other' : `${country.flag} ${country.name}`;
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('click', () => chooseCountry(country));
+    item.append(button);
+    countryList.append(item);
+  });
+}
+
+function displayOf(country) {
+  if (!country) return '';
+  if (country.other) return 'Other';
+  return `${country.flag} ${country.name}`;
+}
+
+function chooseCountry(country) {
+  pickedCountry = country.other
+    ? { other: true, code: '', name: OTHER_PLACE, flag: '' }
+    : country;
+  countrySearch.value = displayOf(pickedCountry);
+  otherWrap.hidden = !pickedCountry.other;
+  setListOpen(false);
+  if (pickedCountry.other) otherInput.focus();
+  commitCountry();
+}
+
+function commitCountry() {
+  const choice = currentCountry();
   renderCard();
-  if (!run || !city || city === run.city) return;
-  const result = leaderboard.submitRun({ ...run, city, previousCity: run.city });
-  run.city = city;
-  const cityLine = result.cityBest ? `New best for ${city}.` : `Logged for ${city}.`;
-  apexNote.textContent = `${run.scoreNote || ''} ${cityLine} Saved on this device.`.trim();
+  if (!run || !choice || choice.name === run.country) return;
+  const result = leaderboard.submitRun({
+    ...run,
+    country: choice.name,
+    countryCode: choice.code,
+    flag: choice.flag,
+    other: Boolean(choice.other),
+    previousCountry: run.country,
+  });
+  run.country = choice.name;
+  run.countryCode = choice.code;
+  run.flag = choice.flag;
+  const line = result.countryBest ? `New best for ${placeLabel(choice)}.` : `Logged for ${placeLabel(choice)}.`;
+  apexNote.textContent = `${run.scoreNote || ''} ${line} Saved on this device.`.trim();
+}
+
+function restoreCountry() {
+  const saved = resolveSavedCountry(leaderboard.lastCountry());
+  if (!saved) {
+    pickedCountry = null;
+    countrySearch.value = '';
+    otherInput.value = '';
+    otherWrap.hidden = true;
+    return;
+  }
+  if (saved.other) {
+    pickedCountry = { other: true, code: '', name: OTHER_PLACE, flag: '' };
+    countrySearch.value = 'Other';
+    otherInput.value = saved.name === OTHER_PLACE ? '' : saved.name;
+    otherWrap.hidden = false;
+  } else {
+    pickedCountry = saved;
+    countrySearch.value = displayOf(saved);
+    otherInput.value = '';
+    otherWrap.hidden = true;
+  }
 }
 
 function showToast(text) {
@@ -238,7 +315,9 @@ function finish(reason) {
     altitudeM: altitude,
     title: info.title,
     tagline: info.tagline,
-    city: null,
+    country: null,
+    countryCode: '',
+    flag: '',
     at: new Date().toISOString(),
   };
   const formatted = formatAltitude(altitude);
@@ -274,11 +353,7 @@ function finish(reason) {
   run.scoreNote = note;
   apexNote.textContent = note;
 
-  const last = leaderboard.lastCity();
-  const known = CITIES.includes(last);
-  paintCities(known ? last : last ? OTHER_CITY : '');
-  if (!known && last) otherInput.value = last;
-  else otherInput.value = '';
+  restoreCountry();
 
   audio.setThrust(0, 0);
   if (flight.launched) audio.land();
@@ -287,7 +362,7 @@ function finish(reason) {
   mode = 'results';
   show('results');
   renderCard();
-  if (known || last) commitCity();
+  if (currentCountry()) commitCountry();
 }
 
 function beginFlight() {
@@ -382,14 +457,14 @@ function text(tag, className, value) {
 function openBests() {
   const board = leaderboard.overview();
   bestsList.replaceChildren();
-  if (!board.overall && board.cities.length === 0) {
+  if (!board.overall && board.countries.length === 0) {
     bestsList.append(text('p', 'empty', 'No flights yet. Scream one into orbit and it will land here.'));
   } else {
     if (board.overall) {
       const hero = document.createElement('article');
       hero.className = 'best-hero';
       const formatted = formatAltitude(board.overall.altitudeM);
-      const place = board.overall.city ? `from ${board.overall.city}` : 'City not picked';
+      const place = board.overall.country ? `from ${placeLabel(board.overall)}` : 'Country not picked';
       hero.append(
         text('p', 'eyebrow', 'Personal best'),
         text('p', 'best-alt', formatted.label),
@@ -398,12 +473,12 @@ function openBests() {
       );
       bestsList.append(hero);
     }
-    for (const entry of board.cities) {
+    for (const entry of board.countries) {
       const row = document.createElement('article');
       row.className = 'best-row';
       const formatted = formatAltitude(entry.altitudeM);
       const who = document.createElement('div');
-      who.append(text('strong', '', entry.city), text('span', '', entry.title));
+      who.append(text('strong', '', placeLabel(entry)), text('span', '', entry.title));
       const score = document.createElement('div');
       score.className = 'best-row-alt';
       score.append(text('span', '', formatted.label), text('small', '', formatWhen(entry.at)));
@@ -412,8 +487,8 @@ function openBests() {
     }
   }
   bestsNote.textContent = board.source === 'local'
-    ? 'Saved on this device. A shared city leaderboard can plug in later.'
-    : 'Shared city board.';
+    ? 'Saved on this device. A shared country leaderboard can plug in later.'
+    : 'Shared country board.';
   mode = 'bests';
   show('bests');
 }
@@ -452,7 +527,41 @@ downloadBtn.addEventListener('click', () => {
 shareX.addEventListener('click', (event) => {
   if (shareX.getAttribute('aria-disabled') === 'true') event.preventDefault();
 });
-otherInput.addEventListener('input', commitCity);
+countrySearch.addEventListener('focus', () => {
+  countryHighlight = 0;
+  paintCountryList();
+  setListOpen(true);
+  countrySearch.select();
+});
+countrySearch.addEventListener('input', () => {
+  countryHighlight = 0;
+  if (pickedCountry && countrySearch.value !== displayOf(pickedCountry)) pickedCountry = null;
+  paintCountryList();
+  setListOpen(true);
+  commitCountry();
+});
+countrySearch.addEventListener('keydown', (event) => {
+  const options = [...countryList.querySelectorAll('[role="option"]')];
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (!options.length) return;
+    setListOpen(true);
+    countryHighlight = event.key === 'ArrowDown'
+      ? (countryHighlight + 1) % options.length
+      : (countryHighlight - 1 + options.length) % options.length;
+    paintCountryList();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const selected = countryList.querySelector('[aria-selected="true"]');
+    selected?.click();
+  } else if (event.key === 'Escape') {
+    setListOpen(false);
+  }
+});
+countrySearch.addEventListener('blur', () => {
+  window.setTimeout(() => setListOpen(false), 120);
+});
+otherInput.addEventListener('input', commitCountry);
 function setSimDb(db) {
   simRange.value = String(dbToSimPercent(db));
   simOut.textContent = `${Math.round(db)} dB`;

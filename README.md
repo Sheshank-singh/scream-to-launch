@@ -39,6 +39,6 @@ Open http://localhost:8080/
 - `?sim=1` adds a volume slider (and **Yell** / **Quiet**, or hold space) so you can fly without a mic.
 - `?fallback=1` skips the mic and uses hold-to-thrust.
 
-## City leaderboard
+## Country leaderboard
 
-Bests are stored in this browser. `js/leaderboard.js` is the only module that reads and writes them. A shared board can replace `noteApex`, `submitRun`, `cityBoard`, and `overview` later; the rest of the game already talks to that adapter and not to `localStorage` directly.
+Bests are stored in this browser, one per country. `js/leaderboard.js` is the only module that reads and writes them. A shared board can replace `noteApex`, `submitRun`, `countryBoard`, and `overview` later; the rest of the game already talks to that adapter and not to `localStorage` directly. Older saves that used a city name are kept and shown as that place.

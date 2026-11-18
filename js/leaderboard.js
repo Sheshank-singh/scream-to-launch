@@ -1,21 +1,24 @@
 import { createStore } from './storage.js';
 
 /**
- * City leaderboard adapter.
+ * Country leaderboard adapter.
  *
  * The game records scores only through this module. Today every method is
- * local: personal bests live in localStorage on this browser, and city
- * boards contain at most that player's own best.
+ * local: personal bests live in localStorage on this browser, and each
+ * country board contains at most that player's own best.
+ *
+ * Older saves used `city`. `storage.js` copies those onto `country` when
+ * they are read, so a best recorded before the country picker still shows.
  *
  * To plug in a shared leaderboard later, replace the bodies of `noteApex`,
- * `submitRun`, `cityBoard`, and `overview` with network calls. Keep these
+ * `submitRun`, `countryBoard`, and `overview` with network calls. Keep these
  * shapes stable so the UI does not have to change:
  *
- *   entry = { id, altitudeM, title, tagline, city|null, at }
+ *   entry = { id, altitudeM, title, tagline, country|null, countryCode, flag, at }
  *   noteApex(entry) -> { isBest, previous|null, source }
- *   submitRun(entry) -> { ok, source, entry, cityBest }
- *   cityBoard(city) -> { source, city, entries: entry[] }
- *   overview() -> { source, overall|null, cities: Array<entry & { city }> }
+ *   submitRun(entry) -> { ok, source, entry, countryBest }
+ *   countryBoard(country) -> { source, country, entries: entry[] }
+ *   overview() -> { source, overall|null, countries: entry[] }
  *
  * `source` is 'local' until a remote implementation returns 'remote'.
  */
@@ -32,7 +35,9 @@ export function createLeaderboard(store = createStore()) {
           altitudeM: entry.altitudeM,
           title: entry.title,
           tagline: entry.tagline,
-          city: null,
+          country: null,
+          countryCode: '',
+          flag: '',
           at: entry.at,
         });
       }
@@ -40,49 +45,54 @@ export function createLeaderboard(store = createStore()) {
     },
 
     submitRun(entry) {
-      const city = (entry.city || '').trim();
-      if (!city) return { ok: false, source: 'local', entry, cityBest: false };
-      const previousCity = entry.previousCity;
-      if (previousCity && previousCity !== city) store.clearCityIfRun(previousCity, entry.id);
+      const country = (entry.country || '').trim();
+      if (!country) return { ok: false, source: 'local', entry, countryBest: false };
+      const previousCountry = entry.previousCountry;
+      if (previousCountry && previousCountry !== country) {
+        store.clearCountryIfRun(previousCountry, entry.id);
+      }
       const saved = {
         id: entry.id,
         altitudeM: entry.altitudeM,
         title: entry.title,
         tagline: entry.tagline,
-        city,
+        country,
+        countryCode: entry.countryCode || '',
+        flag: entry.flag || '',
         at: entry.at,
       };
-      const cityBest = store.setCityBest(city, saved);
-      store.setLastCity(city);
+      const countryBest = store.setCountryBest(country, saved);
+      const remembered = saved.countryCode || (entry.other ? `other:${country}` : country);
+      store.setLastCountry(remembered);
       const overall = store.overall();
       if (overall && overall.id === entry.id) {
-        store.setOverall({ ...overall, city });
+        store.setOverall({ ...overall, country, countryCode: saved.countryCode, flag: saved.flag });
       }
-      return { ok: true, source: 'local', entry: saved, cityBest };
+      return { ok: true, source: 'local', entry: saved, countryBest };
     },
 
-    cityBoard(city) {
-      const best = store.cityBest(city);
+    countryBoard(country) {
+      const best = store.countryBest(country);
       return {
         source: 'local',
-        city,
+        country,
         entries: best ? [best] : [],
       };
     },
 
     overview() {
-      const cities = Object.entries(store.allCities())
-        .map(([city, entry]) => ({ ...entry, city }))
+      const countries = Object.entries(store.allCountries())
+        .map(([name, entry]) => ({ ...entry, country: entry.country || name }))
         .sort((a, b) => b.altitudeM - a.altitudeM);
       return {
         source: 'local',
         overall: store.overall(),
-        cities,
+        countries,
       };
     },
 
-    lastCity() {
-      return store.lastCity();
+    lastCountry() {
+      return store.lastCountry();
     },
   };
 }

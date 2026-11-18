@@ -252,6 +252,9 @@ h2 {
   border-color: transparent;
 }
 
+.country-picker { position: relative; }
+
+.country-picker input,
 .other-wrap input {
   width: 100%;
   border-radius: 12px;
@@ -261,6 +264,46 @@ h2 {
   padding: 12px 14px;
   font-size: 1rem;
   user-select: text;
+}
+
+.country-list {
+  position: absolute;
+  z-index: 8;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  max-height: 240px;
+  overflow: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #141824;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.country-list button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  padding: 9px 10px;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.country-list button[aria-selected="true"],
+.country-list button:hover {
+  background: rgba(255, 200, 87, 0.16);
+}
+
+.country-list .country-empty {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--faint);
 }
 
 .actions {
