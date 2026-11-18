@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070910">
+  <meta name="color-scheme" content="dark">
+  <title>Scream to Launch 🚀</title>
+  <meta name="description" content="Scream into your mic and launch a rocket. Louder and longer means more thrust — through the clouds, the Kármán line, the ISS, and beyond.">
+  <meta property="og:title" content="Scream to Launch 🚀">
+  <meta property="og:description" content="Scream into your mic and launch a rocket. Louder and longer means more thrust — through the clouds, the Kármán line, the ISS, and beyond.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sheshank-singh.github.io/scream-to-launch/">
+  <meta property="og:image" content="https://sheshank-singh.github.io/scream-to-launch/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Scream to Launch — a rocket lifting off into a starry sky">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Scream to Launch 🚀">
+  <meta name="twitter:description" content="Scream into your mic and launch a rocket. Louder and longer means more thrust — through the clouds, the Kármán line, the ISS, and beyond.">
+  <meta name="twitter:image" content="https://sheshank-singh.github.io/scream-to-launch/og.png">
+  <meta name="twitter:image:alt" content="Scream to Launch — a rocket lifting off into a starry sky">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <canvas id="world" aria-hidden="true"></canvas>
+
+  <header id="hud" class="hud" hidden>
+    <p id="best-pill" class="best-pill" hidden></p>
+    <p class="readout">
+      <span id="alt-value">0</span><span id="alt-unit">m</span>
+    </p>
+    <p id="zone-label" class="zone-label">Launch pad</p>
+    <p id="next-label" class="next-label"></p>
+  </header>
+  <div id="thrust-wrap" class="thrust-meter" hidden aria-hidden="true"><span id="thrust-fill"></span></div>
+  <p id="hint" class="hint" hidden>SCREAM</p>
+  <p id="toast" class="toast" hidden role="status"></p>
+  <p id="live" class="sr" aria-live="polite"></p>
+  <button id="bail" class="bail" type="button" hidden>End</button>
+  <button id="hold" class="hold" type="button" hidden>Hold to thrust</button>
+
+  <div id="sim" class="sim" hidden>
+    <label for="sim-range">Simulated scream <output id="sim-out">0%</output></label>
+    <input id="sim-range" type="range" min="0" max="100" value="0" step="1">
+    <div class="sim-actions">
+      <button id="sim-yell" type="button">Yell</button>
+      <button id="sim-quiet" type="button">Quiet</button>
+    </div>
+    <p>Test mode. Hold space to yell.</p>
+  </div>
+
+  <section id="start" class="overlay">
+    <div class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">A one-breath space program</p>
+        <h1>Scream to launch</h1>
+        <p class="lede">Tap start, allow the mic, then scream. Louder and longer puts more thrust under the rocket. Stop, and it coasts back down.</p>
+      </div>
+      <div class="hero-action">
+        <button id="start-btn" class="start-btn" type="button">Start</button>
+        <p class="fine">Loudness is measured here and never recorded or sent. Headphones help, so the engine doesn’t hear itself.</p>
+        <button id="open-bests" class="text-btn" type="button">Your bests</button>
+        <footer class="site-footer">made by <a href="https://x.com/Sheshanksingh26" target="_blank" rel="noopener noreferrer">@Sheshanksingh26</a></footer>
+      </div>
+    </div>
+  </section>
+
+  <section id="results" class="overlay" hidden>
+    <div class="panel">
+      <p class="eyebrow">Apogee</p>
+      <p class="apex"><span id="apex-value">0</span> <span id="apex-unit">m</span></p>
+      <h2 id="apex-title"></h2>
+      <p id="apex-tag" class="lede"></p>
+      <p id="apex-note" class="fine"></p>
+      <canvas id="share-card" class="share-card" width="1200" height="675" aria-label="Share card"></canvas>
+      <p class="field-label">Your city</p>
+      <div id="city-chips" class="chips" role="group" aria-label="City"></div>
+      <div id="other-wrap" class="other-wrap" hidden>
+        <label class="sr" for="other-city">City name</label>
+        <input id="other-city" type="text" maxlength="24" placeholder="Type your city" autocomplete="off" enterkeyhint="done">
+      </div>
+      <div class="actions">
+        <button id="download" class="btn primary" type="button" disabled>Download share card</button>
+        <a id="share-x" class="btn is-disabled" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true">Share on X</a>
+      </div>
+      <p class="fine">The post is prefilled. Attach the card if you want the picture on X.</p>
+      <div class="actions secondary">
+        <button id="again" class="btn" type="button">Fly again</button>
+        <button id="results-bests" class="text-btn" type="button">Your bests</button>
+      </div>
+      <footer class="site-footer">made by <a href="https://x.com/Sheshanksingh26" target="_blank" rel="noopener noreferrer">@Sheshanksingh26</a></footer>
+    </div>
+  </section>
+
+  <section id="bests" class="overlay" hidden>
+    <div class="panel">
+      <p class="eyebrow">On this device</p>
+      <h2>Your bests</h2>
+      <div id="bests-list" class="bests-list"></div>
+      <p id="bests-note" class="fine"></p>
+      <button id="bests-back" class="btn" type="button">Back</button>
+      <footer class="site-footer">made by <a href="https://x.com/Sheshanksingh26" target="_blank" rel="noopener noreferrer">@Sheshanksingh26</a></footer>
+    </div>
+  </section>
+
+  <noscript>
+    <p class="noscript">Scream to Launch needs JavaScript. Nothing is downloaded and nothing is tracked — it only runs in your browser.</p>
+  </noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
