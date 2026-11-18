@@ -25,6 +25,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Turns Pages on for this repo if it is not already set to Actions.
+          enablement: true
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
