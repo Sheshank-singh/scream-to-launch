@@ -6,7 +6,7 @@ Play it: https://sheshank-singh.github.io/scream-to-launch/
 
 ## Play
 
-Tap **Start**, allow the microphone, and scream. If the mic is blocked, hold the on-screen button or the spacebar to thrust. Loudness is measured in the browser and never recorded or uploaded. Personal bests stay on this device.
+Tap **Start** and stay quiet for a second and a half while the pad measures the room. The rocket moves only when you are clearly louder than that floor (about 18 dB, and above a fixed minimum). A normal shout can reach the Kármán line, the ISS, or the Moon. Pluto takes a sustained, very loud scream. If the mic is blocked, hold the on-screen button or the spacebar. Nothing is recorded or uploaded. Personal bests stay on this device.
 
 Headphones help, so the engine sound doesn't feed the microphone.
 

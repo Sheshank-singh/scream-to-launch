@@ -35,6 +35,18 @@
     <p id="next-label" class="next-label"></p>
   </header>
   <div id="thrust-wrap" class="thrust-meter" hidden aria-hidden="true"><span id="thrust-fill"></span></div>
+  <div id="meter" class="meter" hidden>
+    <div class="meter-scale">
+      <div class="meter-track"><div id="meter-fill"></div></div>
+      <div id="meter-line" title="Loud enough"></div>
+    </div>
+    <p id="meter-readout">– dB</p>
+  </div>
+  <div id="calibrate" class="calibrate" hidden>
+    <p class="eyebrow">Stay quiet</p>
+    <p id="cal-seconds" class="cal-seconds">1.5</p>
+    <p class="lede">Measuring the room. Scream after the count.</p>
+  </div>
   <p id="hint" class="hint" hidden>SCREAM</p>
   <p id="toast" class="toast" hidden role="status"></p>
   <p id="live" class="sr" aria-live="polite"></p>
@@ -42,13 +54,13 @@
   <button id="hold" class="hold" type="button" hidden>Hold to thrust</button>
 
   <div id="sim" class="sim" hidden>
-    <label for="sim-range">Simulated scream <output id="sim-out">0%</output></label>
+    <label for="sim-range">Simulated level <output id="sim-out">−72 dB</output></label>
     <input id="sim-range" type="range" min="0" max="100" value="0" step="1">
     <div class="sim-actions">
       <button id="sim-yell" type="button">Yell</button>
-      <button id="sim-quiet" type="button">Quiet</button>
+      <button id="sim-quiet" type="button">Quiet room</button>
     </div>
-    <p>Test mode. Hold space to yell.</p>
+    <p>Test mode. Quiet room must not move the rocket. Hold space for a full scream.</p>
   </div>
 
   <section id="start" class="overlay">
@@ -56,7 +68,7 @@
       <div class="hero-copy">
         <p class="eyebrow">A one-breath space program</p>
         <h1>Scream to launch</h1>
-        <p class="lede">Tap start, allow the mic, then scream. Louder and longer puts more thrust under the rocket. Stop, and it coasts back down.</p>
+        <p class="lede">Tap start and stay quiet for a moment. Then scream. A shout can reach space. Pluto takes a truly ridiculous one.</p>
       </div>
       <div class="hero-action">
         <button id="start-btn" class="start-btn" type="button">Start</button>

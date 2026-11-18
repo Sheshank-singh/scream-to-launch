@@ -1,8 +1,22 @@
 /**
  * All sound is synthesized in the Web Audio API. Nothing is fetched.
- * The engine sits under ~150 Hz and the scream meter reads 200–3800 Hz
- * so the rocket's own roar is less likely to keep itself airborne.
+ * The engine stays quiet and low so it is less likely to trip the gate.
+ * Loudness is dBFS from the analyser time-domain RMS, not a frequency average.
  */
+
+import { rmsToDbfs } from './gate.js';
+
+const MIC_CONSTRAINTS = {
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
+  channelCount: 1,
+  googEchoCancellation: false,
+  googNoiseSuppression: false,
+  googAutoGainControl: false,
+};
+
+export { MIC_CONSTRAINTS };
 
 function tone(ctx, master, { freq, dur, type, gain, delay = 0, slide }) {
   const now = ctx.currentTime + delay;
@@ -28,6 +42,7 @@ export function createAudio() {
   let rumble = null;
   let noiseBuffer = null;
   let analyser = null;
+  let timeData = null;
   let stream = null;
   let muted = false;
 
@@ -102,38 +117,38 @@ export function createAudio() {
     async attachMic(existing) {
       arm();
       const live = existing || (await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          channelCount: 1,
-        },
+        audio: MIC_CONSTRAINTS,
         video: false,
       }));
       stream = live;
+      const track = live.getAudioTracks()[0];
+      if (track?.applyConstraints) {
+        try {
+          await track.applyConstraints({
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          });
+        } catch {
+          /* Some browsers refuse to disable AGC after the fact. The gate still uses a relative floor. */
+        }
+      }
       const source = ctx.createMediaStreamSource(live);
       analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = 0.62;
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
       return live;
     },
-    level() {
-      if (!analyser || !ctx) return 0;
-      const bins = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(bins);
-      const hzPerBin = ctx.sampleRate / 2 / bins.length;
+    /** Instantaneous level in dBFS. Silence is about -100; 0 is clipping. */
+    dbfs() {
+      if (!analyser) return -100;
+      const size = analyser.fftSize;
+      if (!timeData || timeData.length !== size) timeData = new Float32Array(size);
+      analyser.getFloatTimeDomainData(timeData);
       let sum = 0;
-      let count = 0;
-      for (let i = 0; i < bins.length; i += 1) {
-        const hz = i * hzPerBin;
-        if (hz < 200 || hz > 3800) continue;
-        const value = bins[i] / 255;
-        sum += value * value;
-        count += 1;
-      }
-      if (!count) return 0;
-      return Math.sqrt(sum / count);
+      for (let i = 0; i < size; i += 1) sum += timeData[i] * timeData[i];
+      return rmsToDbfs(Math.sqrt(sum / size));
     },
     setThrust(thrust, altitude = 0) {
       if (!ctx || !engineGain) return;
@@ -172,23 +187,6 @@ export function createAudio() {
     stopMic() {
       stream?.getTracks().forEach((track) => track.stop());
       stream = null;
-    },
-  };
-}
-
-export function createLoudness() {
-  let floor = 0.02;
-  let peak = 0.08;
-  return {
-    volume(raw, dt) {
-      const level = Math.max(0, raw || 0);
-      const step = Math.max(0.001, Math.min(0.05, dt || 0.016));
-      if (level < floor + 0.025) floor = floor * 0.96 + level * 0.04;
-      peak = Math.max(level, peak * Math.exp(-0.1 * step));
-      const denom = Math.max(0.055, (peak - floor) * 0.62);
-      let value = (level - floor * 1.35) / denom;
-      if (value < 0.08) value = 0;
-      return Math.max(0, Math.min(1, value));
     },
   };
 }

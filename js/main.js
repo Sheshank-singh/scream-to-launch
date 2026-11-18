@@ -1,5 +1,6 @@
 import { CITIES, OTHER_CITY } from './config.js';
-import { createAudio, createLoudness } from './audio.js';
+import { createAudio, MIC_CONSTRAINTS } from './audio.js';
+import { createGate, dbToSimPercent, simPercentToDb } from './gate.js';
 import { createLeaderboard } from './leaderboard.js';
 import { createFlight, resetFlight, stepFlight } from './physics.js';
 import { createRenderer } from './render.js';
@@ -27,6 +28,12 @@ const bailBtn = document.querySelector('#bail');
 const simBox = document.querySelector('#sim');
 const simRange = document.querySelector('#sim-range');
 const simOut = document.querySelector('#sim-out');
+const meter = document.querySelector('#meter');
+const meterFill = document.querySelector('#meter-fill');
+const meterLine = document.querySelector('#meter-line');
+const meterReadout = document.querySelector('#meter-readout');
+const calibrate = document.querySelector('#calibrate');
+const calSeconds = document.querySelector('#cal-seconds');
 const live = document.querySelector('#live');
 const startScreen = document.querySelector('#start');
 const resultsScreen = document.querySelector('#results');
@@ -48,7 +55,7 @@ const bestsList = document.querySelector('#bests-list');
 const bestsNote = document.querySelector('#bests-note');
 
 const audio = createAudio();
-const loudness = createLoudness();
+const gate = createGate();
 const leaderboard = createLeaderboard();
 const flight = createFlight();
 const renderer = createRenderer(world);
@@ -74,13 +81,19 @@ function show(screen) {
   resultsScreen.hidden = screen !== 'results';
   bestsScreen.hidden = screen !== 'bests';
   const flying = screen === 'flight';
-  hud.hidden = !flying;
+  const livePad = flying || screen === 'calibrating';
+  hud.hidden = !livePad;
   thrustWrap.hidden = !flying;
-  bailBtn.hidden = !flying;
+  bailBtn.hidden = !livePad;
   document.body.classList.toggle('is-flying', flying);
+  document.body.classList.toggle('is-calibrating', screen === 'calibrating');
   if (!flying) hint.hidden = true;
   holdBtn.hidden = !(flying && usingFallback);
-  simBox.hidden = !(flying && simMode && !forceFallback);
+  const showSim = livePad && simMode && !forceFallback;
+  simBox.hidden = !showSim;
+  document.body.classList.toggle('has-sim', showSim);
+  meter.hidden = !(livePad && !usingFallback);
+  calibrate.hidden = screen !== 'calibrating';
 }
 
 function selectedCity() {
@@ -171,14 +184,39 @@ function updateHud() {
   if (flight.thrust > 0.22) hint.hidden = true;
 }
 
-function demandFor(dt) {
+function meterPosition(db) {
+  return Math.max(0, Math.min(1, (db - (-70)) / 70));
+}
+
+function paintMeter(status) {
+  const shown = Number.isFinite(status.db) ? status.db : -70;
+  meterFill.style.width = `${meterPosition(shown) * 100}%`;
+  meterLine.style.left = `${meterPosition(status.openAt) * 100}%`;
+  meter.classList.toggle('is-hot', status.open && status.thrust > 0);
+  const rounded = Math.round(shown);
+  const gateAt = Math.round(status.openAt);
+  meterReadout.textContent = status.calibrating
+    ? `${rounded} dB · listening`
+    : status.open
+      ? `${rounded} dB · loud`
+      : `${rounded} dB · need ${gateAt}`;
+}
+
+function readDb() {
   if (simMode && !forceFallback) {
-    const slider = Number(simRange.value) / 100;
-    simOut.textContent = `${simRange.value}%`;
-    return spaceHeld ? 1 : slider;
+    const percent = spaceHeld ? dbToSimPercent(-2) : Number(simRange.value);
+    const db = simPercentToDb(percent);
+    simOut.textContent = `${Math.round(db)} dB`;
+    return db;
   }
-  if (usingFallback) return holding || spaceHeld ? 1 : 0;
-  return loudness.volume(audio.level(), dt);
+  return audio.dbfs();
+}
+
+function demandFor(dt) {
+  if (usingFallback) return holding || spaceHeld ? 0.62 : 0;
+  const status = gate.update(readDb(), dt);
+  paintMeter(status);
+  return status.thrust;
 }
 
 function finish(reason) {
@@ -240,13 +278,23 @@ function beginFlight() {
   resetFlight(flight);
   celebratedBest = false;
   renderer.snapTo(0);
-  simRange.value = '0';
-  simOut.textContent = '0%';
   mode = 'flight';
   show('flight');
   hint.hidden = false;
   hint.textContent = usingFallback ? 'HOLD' : 'SCREAM';
   updateHud();
+}
+
+function beginCalibration() {
+  resetFlight(flight);
+  flight.live = false;
+  celebratedBest = false;
+  renderer.snapTo(0);
+  gate.startCalibration();
+  mode = 'calibrating';
+  show('calibrating');
+  updateHud();
+  calSeconds.textContent = '1.5';
 }
 
 async function onStart() {
@@ -258,12 +306,7 @@ async function onStart() {
     audio.arm();
     if (!simMode && !forceFallback && navigator.mediaDevices?.getUserMedia) {
       micPromise = navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          channelCount: 1,
-        },
+        audio: MIC_CONSTRAINTS,
         video: false,
       });
     }
@@ -271,7 +314,8 @@ async function onStart() {
     audio.ui();
     if (simMode && !forceFallback) {
       usingFallback = false;
-      beginFlight();
+      if (gate.calibrated) beginFlight();
+      else beginCalibration();
       return;
     }
     if (forceFallback || !micPromise) {
@@ -294,12 +338,16 @@ async function onStart() {
         showToast('Mic ended — hold to thrust');
       });
     }
-    beginFlight();
+    if (gate.calibrated) beginFlight();
+    else beginCalibration();
   } catch {
     usingFallback = !(simMode && !forceFallback);
     try { await micPromise?.catch?.(() => {}); } catch { /* already failed */ }
-    beginFlight();
-    if (usingFallback) showToast('Mic blocked — hold the button or spacebar');
+    if (usingFallback) {
+      beginFlight();
+      showToast('Mic blocked — hold the button or spacebar');
+    } else if (gate.calibrated) beginFlight();
+    else beginCalibration();
   } finally {
     starting = false;
     startBtn.disabled = false;
@@ -362,7 +410,14 @@ document.querySelector('#bests-back').addEventListener('click', () => {
 againBtn.addEventListener('click', () => {
   beginFlight();
 });
-bailBtn.addEventListener('click', () => finish('bail'));
+bailBtn.addEventListener('click', () => {
+  if (mode === 'calibrating') {
+    mode = 'ready';
+    show('start');
+    return;
+  }
+  finish('bail');
+});
 downloadBtn.addEventListener('click', () => {
   if (downloadBtn.disabled) return;
   shareCard.toBlob((blob) => {
@@ -380,17 +435,16 @@ shareX.addEventListener('click', (event) => {
   if (shareX.getAttribute('aria-disabled') === 'true') event.preventDefault();
 });
 otherInput.addEventListener('input', commitCity);
+function setSimDb(db) {
+  simRange.value = String(dbToSimPercent(db));
+  simOut.textContent = `${Math.round(db)} dB`;
+}
 simRange.addEventListener('input', () => {
-  simOut.textContent = `${simRange.value}%`;
+  simOut.textContent = `${Math.round(simPercentToDb(simRange.value))} dB`;
 });
-document.querySelector('#sim-yell').addEventListener('click', () => {
-  simRange.value = '100';
-  simOut.textContent = '100%';
-});
-document.querySelector('#sim-quiet').addEventListener('click', () => {
-  simRange.value = '0';
-  simOut.textContent = '0%';
-});
+document.querySelector('#sim-yell').addEventListener('click', () => setSimDb(-8));
+document.querySelector('#sim-quiet').addEventListener('click', () => setSimDb(-50));
+simOut.textContent = `${Math.round(simPercentToDb(simRange.value))} dB`;
 
 holdBtn.addEventListener('pointerdown', (event) => {
   if (!usingFallback || mode !== 'flight') return;
@@ -441,7 +495,16 @@ let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
   last = now;
-  if (mode === 'flight') {
+  if (mode === 'calibrating') {
+    const status = gate.update(readDb(), dt);
+    paintMeter(status);
+    calSeconds.textContent = status.remaining.toFixed(1);
+    audio.setThrust(0, 0);
+    if (!status.calibrating) {
+      beginFlight();
+      showToast(`Room ${Math.round(status.floorDb)} dB · scream past ${Math.round(status.openAt)} dB`);
+    }
+  } else if (mode === 'flight') {
     stepFlight(flight, demandFor(dt), dt);
     audio.setThrust(flight.thrust, flight.altitude);
     if (flight.justLiftoff) {
@@ -451,8 +514,9 @@ function loop(now) {
     if (flight.justApogee) audio.apogee();
     for (const milestone of flight.justCrossed) {
       audio.milestone(milestone.index);
-      renderer.burst(milestone.id === 'mars' || milestone.id === 'moon' ? 1.3 : 1);
-      showToast(`${milestone.name} · ${milestone.blurb}`);
+      const big = milestone.id === 'pluto' || milestone.id === 'mars' || milestone.id === 'moon';
+      renderer.burst(big ? 1.35 : 1);
+      showToast(milestone.id === 'pluto' ? 'Reached Pluto' : `${milestone.name} · ${milestone.blurb}`);
       if (navigator.vibrate) navigator.vibrate(12);
     }
     if (

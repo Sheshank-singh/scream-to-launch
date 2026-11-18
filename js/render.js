@@ -1,7 +1,7 @@
 import { clamp, mulberry32 } from './util.js';
 
 const MOON_M = 384_400_000;
-const MARS_M = 54_600_000_000;
+const MARS_M = 225_000_000_000;
 
 function roundRect(ctx, x, y, w, h, r) {
   const radius = Math.min(r, w / 2, h / 2);
@@ -228,19 +228,39 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawMars() {
-    if (cam < 800_000) return;
-    const progress = clamp(cam / MARS_M, 0, 1);
-    const radius = 6 + progress ** 1.45 * Math.min(width, height) * 0.36;
-    const x = width * (0.18 + 0.12 * progress);
-    const y = height * (0.16 + 0.05 * (1 - progress));
-    const body = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.2, x, y, radius);
-    body.addColorStop(0, '#ffb199');
-    body.addColorStop(1, '#c44832');
+  function drawPlanet(x, y, radius, light, dark, ring) {
+    const body = ctx.createRadialGradient(x - radius * 0.32, y - radius * 0.32, radius * 0.15, x, y, radius);
+    body.addColorStop(0, light);
+    body.addColorStop(1, dark);
     ctx.fillStyle = body;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
+    if (ring) {
+      ctx.strokeStyle = 'rgba(236, 220, 180, 0.8)';
+      ctx.lineWidth = Math.max(2, radius * 0.12);
+      ctx.beginPath();
+      ctx.ellipse(x, y, radius * 1.7, radius * 0.42, -0.4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function drawOuterBodies() {
+    const bodies = [
+      { alt: MARS_M, light: '#ffb199', dark: '#c44832', x: 0.2, min: 2_000_000 },
+      { alt: 630_000_000_000, light: '#f6e2b8', dark: '#c9894a', x: 0.78, min: 40_000_000_000 },
+      { alt: 1_270_000_000_000, light: '#f4e6c4', dark: '#d2b47a', x: 0.22, min: 200_000_000_000, ring: true },
+      { alt: 5_900_000_000_000, light: '#f0d2c0', dark: '#b89280', x: 0.74, min: 1_500_000_000_000 },
+    ];
+    for (const body of bodies) {
+      if (cam < body.min) continue;
+      const progress = clamp(cam / body.alt, 0, 1.2);
+      let radius = 5 + Math.min(progress, 1) ** 1.45 * Math.min(width, height) * 0.3;
+      if (cam > body.alt * 1.08) radius = Math.max(6, radius * 0.28);
+      const x = width * body.x;
+      const y = height * (0.2 + 0.04 * (1 - Math.min(progress, 1)));
+      drawPlanet(x, y, radius, body.light, body.dark, body.ring);
+    }
   }
 
   function drawCloud(x, y, scale, alpha) {
@@ -578,7 +598,7 @@ export function createRenderer(canvas) {
     ctx.translate(ox, oy);
     drawSky();
     drawStars();
-    drawMars();
+    drawOuterBodies();
     drawMoon();
     if (options.markers !== false) {
       drawMarker(100_000, 'KÁRMÁN LINE  ·  100 km', 'rgba(125, 255, 179, 0.9)');

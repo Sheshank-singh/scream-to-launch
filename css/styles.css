@@ -373,6 +373,81 @@ h2 {
   background: linear-gradient(to top, #ff5b2e, #ffc857);
 }
 
+.meter {
+  position: fixed;
+  z-index: 4;
+  left: 14px;
+  bottom: calc(16px + var(--safe-bottom));
+  width: min(230px, 58vw);
+  pointer-events: none;
+}
+
+.meter-scale {
+  position: relative;
+  height: 14px;
+}
+
+.meter-track {
+  height: 10px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+#meter-fill {
+  height: 100%;
+  width: 0%;
+  background: rgba(167, 176, 196, 0.85);
+}
+
+.meter.is-hot #meter-fill {
+  background: linear-gradient(90deg, #ffc857, #ff5b2e);
+}
+
+#meter-line {
+  position: absolute;
+  top: 0;
+  left: 70%;
+  width: 3px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.meter p {
+  margin: 5px 0 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+body.has-sim .meter {
+  bottom: calc(168px + var(--safe-bottom));
+}
+
+.calibrate {
+  position: fixed;
+  z-index: 4;
+  left: 50%;
+  top: 34%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100% - 32px));
+  text-align: center;
+  pointer-events: none;
+}
+
+.cal-seconds {
+  font-size: clamp(3.2rem, 12vw, 5rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+}
+
 .hint {
   position: fixed;
   z-index: 3;

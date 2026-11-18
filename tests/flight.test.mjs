@@ -1,8 +1,9 @@
+import { createGate, rmsToDbfs, simPercentToDb, thrustFromDb } from '../js/gate.js';
 import { createLeaderboard } from '../js/leaderboard.js';
-import { altitudeCurve, ALTITUDE_KEYS, createFlight, resetFlight, stepFlight } from '../js/physics.js';
+import { altitudeCurve, createFlight, resetFlight, stepFlight } from '../js/physics.js';
 import { createStore } from '../js/storage.js';
 import { sanitizeCity, shareIntent, shareLine } from '../js/share.js';
-import { formatAltitude, titleFor } from '../js/zones.js';
+import { DISTANCE, formatAltitude, titleFor } from '../js/zones.js';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -29,65 +30,114 @@ function memory() {
 }
 
 let previous = 0;
-for (let t = 0; t <= 30; t += 0.05) {
+for (let t = 0; t <= 600; t += 0.25) {
   const alt = altitudeCurve(t);
-  assert(alt >= previous - 1e-6, `curve dipped at t=${t}: ${alt} < ${previous}`);
+  assert(alt >= previous - 1, `curve dipped at t=${t}: ${alt} < ${previous}`);
   previous = alt;
 }
 assert(altitudeCurve(0) === 0, 'curve starts at the pad');
-assert(Math.abs(altitudeCurve(ALTITUDE_KEYS[4].t) - 10_000) < 1, `jets key ${altitudeCurve(5.5)}`);
-assert(Math.abs(altitudeCurve(10.5) - 100_000) / 100_000 < 0.02, 'karman key');
+assert(Math.abs(altitudeCurve(9) - 10_000) / 10_000 < 0.05, `jets key ${altitudeCurve(9)}`);
+assert(Math.abs(altitudeCurve(18) - DISTANCE.karman) / DISTANCE.karman < 0.05, 'karman key');
+assert(Math.abs(altitudeCurve(580) - DISTANCE.pluto) / DISTANCE.pluto < 0.05, 'pluto key');
 
-const hop = simulate([{ seconds: 0.45, demand: 1 }]);
-assert(hop.launched, `short yell should leave the pad, alt ${hop.altitude}`);
-assert(hop.maxAltitude > 28, 'launch threshold');
+function timeTo(demand, meters, limit = 900) {
+  const state = createFlight();
+  resetFlight(state);
+  const dt = 1 / 40;
+  let t = 0;
+  for (; t <= limit; t += dt) {
+    stepFlight(state, demand, dt);
+    if (state.maxAltitude >= meters) return { t, state };
+  }
+  return { t: null, state };
+}
+
+const silent = simulate([{ seconds: 20, demand: 0 }]);
+assert(!silent.launched && silent.altitude === 0 && silent.maxAltitude === 0, 'silence stays on the pad');
+
+const leak = simulate([{ seconds: 20, demand: 0.03 }]);
+assert(leak.maxAltitude === 0, `deadzone leaked to ${leak.maxAltitude}`);
+
+const hop = simulate([{ seconds: 2.2, demand: 1 }]);
+assert(hop.launched, `full scream should leave the pad, alt ${hop.altitude}`);
 
 const landed = simulate([
-  { seconds: 1.2, demand: 1 },
-  { seconds: 8, demand: 0 },
+  { seconds: 6, demand: 1 },
+  { seconds: 12, demand: 0 },
 ]);
 assert(landed.ended, `flight should end after the fall, alt ${landed.altitude} clock ${landed.screamClock}`);
-assert(landed.maxAltitude > 400, `expected a cloud-ish hop, got ${landed.maxAltitude}`);
+assert(landed.maxAltitude > 1_000, `expected clouds, got ${landed.maxAltitude}`);
 
-const jets = simulate([{ seconds: 5.6, demand: 1 }]);
-assert(jets.maxAltitude > 8_000, `jets run too low: ${jets.maxAltitude}`);
+const karman = timeTo(1, DISTANCE.karman);
+assert(karman.t && karman.t < 25, `karman too slow: ${karman.t}`);
+const iss = timeTo(1, DISTANCE.iss);
+assert(iss.t && iss.t > karman.t && iss.t < 45, `ISS time ${iss.t}`);
+const moon = timeTo(1, DISTANCE.moon);
+assert(moon.t && moon.t > 50 && moon.t < 90, `moon time ${moon.t}`);
+const mars = timeTo(1, DISTANCE.mars);
+assert(mars.t && mars.t > 100 && mars.t < 170, `mars time ${mars.t}`);
+const pluto = timeTo(1, DISTANCE.pluto, 800);
+assert(pluto.t && pluto.t > 500 && pluto.t < 700, `pluto time ${pluto.t}`);
 
-const karman = simulate([{ seconds: 10.6, demand: 1 }]);
-assert(karman.maxAltitude > 90_000, `karman run too low: ${karman.maxAltitude}`);
+const shout = thrustFromDb(-14, -26);
+const shoutKarman = timeTo(shout, DISTANCE.karman, 200);
+assert(shoutKarman.t && shoutKarman.t > karman.t, 'a shout is slower than a full scream');
+assert(timeTo(shout, DISTANCE.pluto, 200).t === null, 'a one-note shout does not reach Pluto quickly');
 
-const iss = simulate([{ seconds: 14.2, demand: 1 }]);
-assert(iss.maxAltitude > 300_000, `ISS run too low: ${iss.maxAltitude}`);
+const gate = createGate();
+gate.startCalibration(1.5);
+let quietStatus = null;
+for (let i = 0; i < 90; i += 1) quietStatus = gate.update(-50, 1 / 60);
+assert(quietStatus.calibrated && !quietStatus.calibrating, 'calibration finished');
+assert(Math.abs(quietStatus.floorDb - (-50)) < 1, `floor ${quietStatus.floorDb}`);
+assert(quietStatus.openAt === -26, `open line ${quietStatus.openAt}`);
+assert(quietStatus.thrust === 0, 'quiet room has no thrust');
 
-const moon = simulate([{ seconds: 21.8, demand: 1 }]);
-assert(moon.maxAltitude > 300_000_000, `moon run too low: ${moon.maxAltitude}`);
+for (let i = 0; i < 180; i += 1) quietStatus = gate.update(-50, 1 / 60);
+assert(quietStatus.thrust === 0 && !quietStatus.open, 'room noise stays shut');
+for (let i = 0; i < 180; i += 1) quietStatus = gate.update(-32, 1 / 60);
+assert(quietStatus.thrust === 0 && !quietStatus.open, 'ordinary talking stays shut');
 
-const mars = simulate([{ seconds: 28.4, demand: 1 }]);
-assert(mars.maxAltitude > 40_000_000_000, `mars run too low: ${mars.maxAltitude}`);
+let loud = null;
+for (let i = 0; i < 12; i += 1) loud = gate.update(-8, 1 / 60);
+assert(loud.open && loud.thrust > 0.5, `scream should open the gate, thrust ${loud.thrust}`);
+for (let i = 0; i < 30; i += 1) loud = gate.update(-30, 1 / 60);
+assert(loud.open, 'hysteresis holds through a dip');
+for (let i = 0; i < 90; i += 1) loud = gate.update(-50, 1 / 60);
+assert(!loud.open && loud.thrust === 0, 'falling back to the room closes the gate');
 
-const quiet = simulate([{ seconds: 10.6, demand: 0.45 }]);
-assert(quiet.maxAltitude < karman.maxAltitude, 'a softer scream should climb less');
-assert(quiet.maxAltitude > 1_000, `soft scream still climbs, got ${quiet.maxAltitude}`);
+assert(Math.abs(rmsToDbfs(1) ) < 0.001, '0 dBFS at full scale');
+assert(rmsToDbfs(0.1) < -19 && rmsToDbfs(0.1) > -21, 'rms 0.1 is about -20 dBFS');
+assert(simPercentToDb(0) < -70, 'slider floor is quiet');
+assert(thrustFromDb(-50, -26) === 0, 'below the line is zero');
 
-const silent = simulate([{ seconds: 3, demand: 0 }]);
-assert(!silent.launched && silent.altitude === 0, 'silence stays on the pad');
-
-const crossed = simulate([
-  { seconds: 2, demand: 1 },
-  { seconds: 6, demand: 0 },
-  { seconds: 2, demand: 1 },
-]);
-assert(crossed.milestones.clouds, 'clouds milestone sticks');
+const table = [-50, -32, -24, -20, -14, -8, -4].map((db) => {
+  const thrust = thrustFromDb(db, -26);
+  return {
+    db,
+    thrust: Number(thrust.toFixed(3)),
+    karman: timeTo(thrust, DISTANCE.karman, 400).t,
+    iss: timeTo(thrust, DISTANCE.iss, 500).t,
+    moon: timeTo(thrust, DISTANCE.moon, 800).t,
+    mars: timeTo(thrust, DISTANCE.mars, 900).t,
+    pluto: timeTo(thrust, DISTANCE.pluto, 900).t,
+  };
+});
 
 assert(titleFor(200).title === 'Neighbour-alarming', titleFor(200).title);
 assert(titleFor(100_000).title === 'Kármán line conqueror', titleFor(100_000).title);
 assert(titleFor(400_000).title === 'ISS just heard you', titleFor(400_000).title);
-assert(titleFor(54_600_000_000).title === 'Mars mission, voice only', titleFor(54_600_000_000).title);
+assert(titleFor(54_600_000_000).title === 'Translunar menace', titleFor(54_600_000_000).title);
+assert(titleFor(DISTANCE.pluto).title === 'Reached Pluto', titleFor(DISTANCE.pluto).title);
+assert(titleFor(DISTANCE.mars).title === 'Mars mission, voice only', titleFor(DISTANCE.mars).title);
 assert(titleFor(99_000).title === 'Almost an astronaut', titleFor(99_000).title);
 
 assert(formatAltitude(842).label === '842 m', formatAltitude(842).label);
 assert(formatAltitude(12_400).label === '12.4 km', formatAltitude(12_400).label);
 assert(formatAltitude(384_400_000).label === '384,400 km', formatAltitude(384_400_000).label);
 assert(formatAltitude(54_600_000_000).label === '54.6 million km', formatAltitude(54_600_000_000).label);
+assert(formatAltitude(DISTANCE.mars).label === '1.5 AU', formatAltitude(DISTANCE.mars).label);
+assert(formatAltitude(DISTANCE.pluto).label.endsWith('AU'), formatAltitude(DISTANCE.pluto).label);
 
 const line = shareLine({ altitudeLabel: '128 km', city: 'Mumbai' });
 assert(
@@ -130,13 +180,12 @@ board.submitRun({ ...first, id: 'c', altitudeM: 800, city: 'Mumbai', previousCit
 assert(board.cityBoard('Mumbai').entries[0].altitudeM === 5000, 'older higher city best remains');
 
 console.log('flight tests passed');
-console.log('sample', {
-  hop: Math.round(hop.maxAltitude),
-  landed: Math.round(landed.maxAltitude),
-  jets: Math.round(jets.maxAltitude),
-  karman: Math.round(karman.maxAltitude),
-  iss: Math.round(iss.maxAltitude),
-  moon: Math.round(moon.maxAltitude),
-  mars: Math.round(mars.maxAltitude),
-  quiet: Math.round(quiet.maxAltitude),
-});
+console.log(JSON.stringify({
+  karman: karman.t,
+  iss: iss.t,
+  moon: moon.t,
+  mars: mars.t,
+  pluto: pluto.t,
+  shout,
+  table,
+}, null, 2));

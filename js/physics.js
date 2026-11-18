@@ -3,39 +3,47 @@ import { MILESTONES } from './zones.js';
 /**
  * Arcade flight model.
  *
- * A real rocket cannot reach Mars on lung power, so scream-time maps through
- * a curve that hits the scenic altitudes on purpose:
- *   ~1.6s clouds, ~5.5s jets, ~10.5s Kármán, ~14s ISS, ~21.5s Moon, ~28s Mars
- * at a full-throated scream (demand = 1). Partial volume advances the clock
- * more slowly. When the scream stops, the clock hangs (coast), then rewinds
- * so the rocket falls back through the same zones and lands.
+ * `demand` is already a 0–1 thrust from the decibel gate (0 means the gate
+ * is shut — the rocket must not creep). A full scream (demand = 1) is the
+ * only thing that tracks this curve. Partial thrust is linear, so a shout
+ * that is merely "loud enough" crawls, and the gaps between planets widen
+ * on purpose: Kármán is seconds, Pluto is many minutes.
+ *
+ * Full-scream clock, roughly:
+ *   4s clouds, 9s jets, 18s Kármán, 32s ISS, 70s Moon,
+ *   130s Mars, 230s Jupiter, 580s Pluto.
+ * Silence rewinds the clock (coast, then fall) so the run can end.
  */
 
 export const ALTITUDE_KEYS = [
   { t: 0, alt: 0 },
-  { t: 0.4, alt: 100 },
-  { t: 1.6, alt: 900 },
-  { t: 3.2, alt: 2_800 },
-  { t: 5.5, alt: 10_000 },
-  { t: 8.0, alt: 35_000 },
-  { t: 10.5, alt: 100_000 },
-  { t: 14.0, alt: 400_000 },
-  { t: 17.5, alt: 3_500_000 },
-  { t: 21.5, alt: 384_400_000 },
-  { t: 28.0, alt: 54_600_000_000 },
+  { t: 1.1, alt: 80 },
+  { t: 4, alt: 1_000 },
+  { t: 9, alt: 10_000 },
+  { t: 18, alt: 100_000 },
+  { t: 32, alt: 400_000 },
+  { t: 48, alt: 36_000_000 },
+  { t: 70, alt: 384_400_000 },
+  { t: 130, alt: 225_000_000_000 },
+  { t: 175, alt: 330_000_000_000 },
+  { t: 230, alt: 630_000_000_000 },
+  { t: 300, alt: 1_270_000_000_000 },
+  { t: 380, alt: 2_720_000_000_000 },
+  { t: 470, alt: 4_350_000_000_000 },
+  { t: 580, alt: 5_900_000_000_000 },
 ];
 
-const FALL_RATE = 1.65;
-const MAX_CLOCK = 48;
+const MAX_CLOCK = 640;
 const LAUNCH_METERS = 28;
 const LAND_METERS = 36;
+const THRUST_DEADZONE = 0.04;
 
 export function altitudeCurve(t) {
   const keys = ALTITUDE_KEYS;
   if (t <= 0) return 0;
   const last = keys[keys.length - 1];
   if (t >= last.t) {
-    return last.alt * Math.exp(Math.min(2.4, (t - last.t) * 0.05));
+    return last.alt * Math.exp(Math.min(0.35, (t - last.t) * 0.004));
   }
   let index = 1;
   while (index < keys.length - 1 && keys[index].t < t) index += 1;
@@ -99,17 +107,18 @@ export function stepFlight(state, demand, dt) {
   const step = Math.max(0, Math.min(0.05, dt || 0));
   if (step === 0) return state;
 
-  const input = Math.max(0, Math.min(1, demand || 0));
+  const raw = Math.max(0, Math.min(1, demand || 0));
+  const input = raw < THRUST_DEADZONE ? 0 : raw;
   state.demand = input;
-  const thrustRate = input > state.thrust ? 10 : 3.4;
+  const thrustRate = input > state.thrust ? 8 : 4.5;
   state.thrust += (input - state.thrust) * (1 - Math.exp(-thrustRate * step));
 
-  const thrusting = input > 0.07;
+  const thrusting = input > 0;
   if (thrusting) {
     if (state.apogeeNoted && state.hang <= 0) state.apogeeNoted = false;
-    state.screamClock += Math.pow(input, 0.9) * step;
+    state.screamClock += input * step;
     if (state.screamClock > MAX_CLOCK) state.screamClock = MAX_CLOCK;
-    state.hang = 0.55;
+    state.hang = 0.7;
   } else if (state.launched && state.hang > 0) {
     state.hang -= step;
     if (state.hang <= 0) {
@@ -120,7 +129,8 @@ export function stepFlight(state, demand, dt) {
       }
     }
   } else {
-    state.screamClock = Math.max(0, state.screamClock - FALL_RATE * step);
+    const fallRate = 2.2 * (1 + state.screamClock / 26);
+    state.screamClock = Math.max(0, state.screamClock - fallRate * step);
   }
 
   const target = altitudeCurve(state.screamClock);
@@ -147,7 +157,7 @@ export function stepFlight(state, demand, dt) {
 
   state.time += step;
 
-  const quiet = input < 0.05 && state.thrust < 0.08;
+  const quiet = input === 0 && state.thrust < 0.05;
   if (
     state.launched &&
     quiet &&
