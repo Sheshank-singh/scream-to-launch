@@ -6,7 +6,7 @@ Play it: https://sheshank-singh.github.io/scream-to-launch/
 
 ## Play
 
-Tap **Start** and stay quiet for a second and a half while the pad measures the room. The rocket moves only when you are clearly louder than that floor (about 18 dB, and above a fixed minimum). A normal shout can reach the Kármán line, the ISS, or the Moon. Pluto takes a sustained, very loud scream. If the mic is blocked, hold the on-screen button or the spacebar. Nothing is recorded or uploaded. Personal bests stay on this device.
+Tap **Start** and stay quiet for a second and a half while the pad measures the room. The rocket stays put until you are about 9 dB louder than that floor, and also above roughly −36 dBFS, so a normal scream counts and room noise does not. Stop to breathe and it drifts down; scream again to climb. The score is your highest point. The run ends on the pad, after about 9 seconds of quiet once you have left the ground, or when you tap **Finish**. Pluto still takes several minutes of screaming. If the mic is blocked, hold the on-screen button or the spacebar. Nothing is recorded or uploaded. Personal bests stay on this device.
 
 Headphones help, so the engine sound doesn't feed the microphone.
 

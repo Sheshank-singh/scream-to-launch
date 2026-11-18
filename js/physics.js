@@ -9,34 +9,37 @@ import { MILESTONES } from './zones.js';
  * that is merely "loud enough" crawls, and the gaps between planets widen
  * on purpose: Kármán is seconds, Pluto is many minutes.
  *
- * Full-scream clock, roughly:
- *   4s clouds, 9s jets, 18s Kármán, 32s ISS, 70s Moon,
- *   130s Mars, 230s Jupiter, 580s Pluto.
- * Silence rewinds the clock (coast, then fall) so the run can end.
+ * Full-scream clock (demand = 1), roughly:
+ *   12s Kármán, 27s ISS, 60s Moon, 120s Mars, 340s Pluto.
+ * Quieter thrust is slower. Silence does not end the run: the rocket
+ * coasts, then loses height slowly so a breath can resume the climb.
+ * The run ends on the pad, after ~9s of quiet once airborne, or via Finish.
  */
 
 export const ALTITUDE_KEYS = [
   { t: 0, alt: 0 },
-  { t: 1.1, alt: 80 },
-  { t: 4, alt: 1_000 },
-  { t: 9, alt: 10_000 },
-  { t: 18, alt: 100_000 },
-  { t: 32, alt: 400_000 },
-  { t: 48, alt: 36_000_000 },
-  { t: 70, alt: 384_400_000 },
-  { t: 130, alt: 225_000_000_000 },
-  { t: 175, alt: 330_000_000_000 },
-  { t: 230, alt: 630_000_000_000 },
-  { t: 300, alt: 1_270_000_000_000 },
-  { t: 380, alt: 2_720_000_000_000 },
-  { t: 470, alt: 4_350_000_000_000 },
-  { t: 580, alt: 5_900_000_000_000 },
+  { t: 0.7, alt: 90 },
+  { t: 2.4, alt: 1_000 },
+  { t: 6, alt: 10_000 },
+  { t: 12, alt: 100_000 },
+  { t: 27, alt: 400_000 },
+  { t: 42, alt: 36_000_000 },
+  { t: 60, alt: 384_400_000 },
+  { t: 120, alt: 225_000_000_000 },
+  { t: 160, alt: 330_000_000_000 },
+  { t: 205, alt: 630_000_000_000 },
+  { t: 250, alt: 1_270_000_000_000 },
+  { t: 290, alt: 2_720_000_000_000 },
+  { t: 320, alt: 4_350_000_000_000 },
+  { t: 340, alt: 5_900_000_000_000 },
 ];
 
-const MAX_CLOCK = 640;
+const MAX_CLOCK = 420;
 const LAUNCH_METERS = 28;
-const LAND_METERS = 36;
-const THRUST_DEADZONE = 0.04;
+const LAND_METERS = 40;
+const THRUST_DEADZONE = 0.045;
+const SILENCE_LIMIT = 9;
+const FALL_PER_SECOND = 1.15;
 
 export function altitudeCurve(t) {
   const keys = ALTITUDE_KEYS;
@@ -67,6 +70,9 @@ export function createFlight() {
     thrust: 0,
     demand: 0,
     hang: 0,
+    silence: 0,
+    falling: false,
+    endReason: '',
     launched: false,
     ended: false,
     time: 0,
@@ -87,6 +93,9 @@ export function resetFlight(state) {
   state.thrust = 0;
   state.demand = 0;
   state.hang = 0;
+  state.silence = 0;
+  state.falling = false;
+  state.endReason = '';
   state.launched = false;
   state.ended = false;
   state.time = 0;
@@ -115,22 +124,22 @@ export function stepFlight(state, demand, dt) {
 
   const thrusting = input > 0;
   if (thrusting) {
-    if (state.apogeeNoted && state.hang <= 0) state.apogeeNoted = false;
+    state.silence = 0;
+    state.falling = false;
     state.screamClock += input * step;
     if (state.screamClock > MAX_CLOCK) state.screamClock = MAX_CLOCK;
-    state.hang = 0.7;
-  } else if (state.launched && state.hang > 0) {
-    state.hang -= step;
-    if (state.hang <= 0) {
-      state.hang = 0;
-      if (!state.apogeeNoted && state.maxAltitude > 40) {
-        state.apogeeNoted = true;
-        state.justApogee = true;
-      }
+    state.hang = 0.4;
+  } else if (state.launched) {
+    state.silence += step;
+    if (state.hang > 0) {
+      state.hang -= step;
+      state.falling = false;
+    } else {
+      state.falling = true;
+      state.screamClock = Math.max(0, state.screamClock - FALL_PER_SECOND * step);
     }
   } else {
-    const fallRate = 2.2 * (1 + state.screamClock / 26);
-    state.screamClock = Math.max(0, state.screamClock - fallRate * step);
+    state.falling = false;
   }
 
   const target = altitudeCurve(state.screamClock);
@@ -158,18 +167,20 @@ export function stepFlight(state, demand, dt) {
   state.time += step;
 
   const quiet = input === 0 && state.thrust < 0.05;
-  if (
+  if (state.launched && quiet && state.silence >= SILENCE_LIMIT) {
+    state.ended = true;
+    state.endReason = 'silence';
+  } else if (
     state.launched &&
     quiet &&
     state.hang <= 0 &&
-    state.screamClock < 0.18 &&
     state.altitude < LAND_METERS &&
     state.velocity <= 0
   ) {
     state.ended = true;
+    state.endReason = 'pad';
     state.altitude = 0;
     state.velocity = 0;
-    state.thrust = 0;
   }
 
   return state;

@@ -36,9 +36,9 @@ for (let t = 0; t <= 600; t += 0.25) {
   previous = alt;
 }
 assert(altitudeCurve(0) === 0, 'curve starts at the pad');
-assert(Math.abs(altitudeCurve(9) - 10_000) / 10_000 < 0.05, `jets key ${altitudeCurve(9)}`);
-assert(Math.abs(altitudeCurve(18) - DISTANCE.karman) / DISTANCE.karman < 0.05, 'karman key');
-assert(Math.abs(altitudeCurve(580) - DISTANCE.pluto) / DISTANCE.pluto < 0.05, 'pluto key');
+assert(Math.abs(altitudeCurve(6) - 10_000) / 10_000 < 0.08, `jets key ${altitudeCurve(6)}`);
+assert(Math.abs(altitudeCurve(12) - DISTANCE.karman) / DISTANCE.karman < 0.08, 'karman key');
+assert(Math.abs(altitudeCurve(340) - DISTANCE.pluto) / DISTANCE.pluto < 0.08, 'pluto key');
 
 function timeTo(demand, meters, limit = 900) {
   const state = createFlight();
@@ -61,28 +61,47 @@ assert(leak.maxAltitude === 0, `deadzone leaked to ${leak.maxAltitude}`);
 const hop = simulate([{ seconds: 2.2, demand: 1 }]);
 assert(hop.launched, `full scream should leave the pad, alt ${hop.altitude}`);
 
-const landed = simulate([
-  { seconds: 6, demand: 1 },
-  { seconds: 12, demand: 0 },
+const climbed = simulate([{ seconds: 12, demand: 1 }]);
+const paused = simulate([
+  { seconds: 12, demand: 1 },
+  { seconds: 3, demand: 0 },
 ]);
-assert(landed.ended, `flight should end after the fall, alt ${landed.altitude} clock ${landed.screamClock}`);
-assert(landed.maxAltitude > 1_000, `expected clouds, got ${landed.maxAltitude}`);
+assert(!paused.ended, 'a short breath does not end the run');
+assert(paused.falling, 'quiet after launch is a descent');
+assert(paused.altitude < paused.maxAltitude * 0.92, `descent too small ${paused.altitude} vs ${paused.maxAltitude}`);
+assert(paused.altitude > paused.maxAltitude * 0.2, `descent too violent ${paused.altitude} vs ${paused.maxAltitude}`);
+const resumed = simulate([
+  { seconds: 12, demand: 1 },
+  { seconds: 3, demand: 0 },
+  { seconds: 6, demand: 1 },
+]);
+assert(!resumed.ended, 'screaming again continues the run');
+assert(resumed.maxAltitude > paused.maxAltitude, 'climb resumes after a pause');
+assert(resumed.altitude > paused.altitude, 'altitude rises again after the pause');
+
+const timedOut = simulate([
+  { seconds: 12, demand: 1 },
+  { seconds: 9.4, demand: 0 },
+]);
+assert(timedOut.ended && timedOut.endReason === 'silence', `silence should finish the run, got ${timedOut.endReason}`);
+assert(timedOut.maxAltitude >= climbed.maxAltitude * 0.9, 'score keeps the peak');
 
 const karman = timeTo(1, DISTANCE.karman);
-assert(karman.t && karman.t < 25, `karman too slow: ${karman.t}`);
+assert(karman.t && karman.t >= 10 && karman.t <= 15, `karman time ${karman.t}`);
 const iss = timeTo(1, DISTANCE.iss);
-assert(iss.t && iss.t > karman.t && iss.t < 45, `ISS time ${iss.t}`);
+assert(iss.t && iss.t >= 24 && iss.t <= 32, `ISS time ${iss.t}`);
 const moon = timeTo(1, DISTANCE.moon);
-assert(moon.t && moon.t > 50 && moon.t < 90, `moon time ${moon.t}`);
+assert(moon.t && moon.t >= 52 && moon.t <= 70, `moon time ${moon.t}`);
 const mars = timeTo(1, DISTANCE.mars);
-assert(mars.t && mars.t > 100 && mars.t < 170, `mars time ${mars.t}`);
-const pluto = timeTo(1, DISTANCE.pluto, 800);
-assert(pluto.t && pluto.t > 500 && pluto.t < 700, `pluto time ${pluto.t}`);
+assert(mars.t && mars.t >= 105 && mars.t <= 140, `mars time ${mars.t}`);
+const pluto = timeTo(1, DISTANCE.pluto, 500);
+assert(pluto.t && pluto.t >= 300 && pluto.t <= 380, `pluto time ${pluto.t}`);
 
-const shout = thrustFromDb(-14, -26);
-const shoutKarman = timeTo(shout, DISTANCE.karman, 200);
-assert(shoutKarman.t && shoutKarman.t > karman.t, 'a shout is slower than a full scream');
-assert(timeTo(shout, DISTANCE.pluto, 200).t === null, 'a one-note shout does not reach Pluto quickly');
+const shout = thrustFromDb(-18, -36);
+assert(shout > 0.95, `a normal scream should be nearly full thrust, got ${shout}`);
+const partial = thrustFromDb(-28, -36);
+assert(partial > 0.25 && partial < 0.75, `louder should still outrun a milder voice, thrust ${partial}`);
+assert(timeTo(partial, DISTANCE.karman, 60).t > karman.t, 'partial thrust is slower than a full scream');
 
 const gate = createGate();
 gate.startCalibration(1.5);
@@ -90,29 +109,29 @@ let quietStatus = null;
 for (let i = 0; i < 90; i += 1) quietStatus = gate.update(-50, 1 / 60);
 assert(quietStatus.calibrated && !quietStatus.calibrating, 'calibration finished');
 assert(Math.abs(quietStatus.floorDb - (-50)) < 1, `floor ${quietStatus.floorDb}`);
-assert(quietStatus.openAt === -26, `open line ${quietStatus.openAt}`);
+assert(quietStatus.openAt === -36, `open line ${quietStatus.openAt}`);
 assert(quietStatus.thrust === 0, 'quiet room has no thrust');
 
 for (let i = 0; i < 180; i += 1) quietStatus = gate.update(-50, 1 / 60);
 assert(quietStatus.thrust === 0 && !quietStatus.open, 'room noise stays shut');
-for (let i = 0; i < 180; i += 1) quietStatus = gate.update(-32, 1 / 60);
-assert(quietStatus.thrust === 0 && !quietStatus.open, 'ordinary talking stays shut');
+for (let i = 0; i < 180; i += 1) quietStatus = gate.update(-42, 1 / 60);
+assert(quietStatus.thrust === 0 && !quietStatus.open, 'just under the line stays shut');
 
 let loud = null;
-for (let i = 0; i < 12; i += 1) loud = gate.update(-8, 1 / 60);
-assert(loud.open && loud.thrust > 0.5, `scream should open the gate, thrust ${loud.thrust}`);
-for (let i = 0; i < 30; i += 1) loud = gate.update(-30, 1 / 60);
+for (let i = 0; i < 12; i += 1) loud = gate.update(-16, 1 / 60);
+assert(loud.open && loud.thrust > 0.85, `a normal scream should open the gate hard, thrust ${loud.thrust}`);
+for (let i = 0; i < 30; i += 1) loud = gate.update(-40, 1 / 60);
 assert(loud.open, 'hysteresis holds through a dip');
-for (let i = 0; i < 90; i += 1) loud = gate.update(-50, 1 / 60);
+for (let i = 0; i < 90; i += 1) loud = gate.update(-55, 1 / 60);
 assert(!loud.open && loud.thrust === 0, 'falling back to the room closes the gate');
 
 assert(Math.abs(rmsToDbfs(1) ) < 0.001, '0 dBFS at full scale');
 assert(rmsToDbfs(0.1) < -19 && rmsToDbfs(0.1) > -21, 'rms 0.1 is about -20 dBFS');
 assert(simPercentToDb(0) < -70, 'slider floor is quiet');
-assert(thrustFromDb(-50, -26) === 0, 'below the line is zero');
+assert(thrustFromDb(-50, -36) === 0, 'below the line is zero');
 
-const table = [-50, -32, -24, -20, -14, -8, -4].map((db) => {
-  const thrust = thrustFromDb(db, -26);
+const table = [-50, -42, -30, -22, -16, -8].map((db) => {
+  const thrust = thrustFromDb(db, -36);
   return {
     db,
     thrust: Number(thrust.toFixed(3)),

@@ -451,18 +451,28 @@ body.has-sim .meter {
 .hint {
   position: fixed;
   z-index: 3;
-  left: 0;
-  right: 0;
-  top: 32%;
+  left: 50%;
+  right: auto;
+  top: calc(158px + var(--safe-top));
+  transform: translateX(-50%);
   margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(8, 10, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   text-align: center;
-  font-size: clamp(3rem, 14vw, 6rem);
+  font-size: 0.95rem;
   font-weight: 800;
-  letter-spacing: 0.14em;
-  color: rgba(255, 255, 255, 0.88);
-  text-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.92);
   pointer-events: none;
-  animation: hint 1.1s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+.hint.is-falling {
+  color: #ffc857;
+  border-color: rgba(255, 200, 87, 0.45);
 }
 
 @keyframes hint {

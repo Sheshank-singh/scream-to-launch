@@ -7,12 +7,12 @@
  * an absolute minimum. Hysteresis keeps fans and ordinary talking shut out.
  */
 
-export const ABSOLUTE_OPEN_DB = -26;
-export const ABSOLUTE_CLOSE_DB = -34;
-export const MARGIN_OPEN_DB = 18;
-export const MARGIN_CLOSE_DB = 10;
+export const ABSOLUTE_OPEN_DB = -36;
+export const ABSOLUTE_CLOSE_DB = -42;
+export const MARGIN_OPEN_DB = 9;
+export const MARGIN_CLOSE_DB = 5;
 export const CALIBRATION_SECONDS = 1.5;
-export const FULL_SCREAM_OVER_DB = 22;
+export const FULL_SCREAM_OVER_DB = 14;
 
 const OPEN_HOLD = 0.09;
 const CLOSE_HOLD = 0.16;
@@ -33,7 +33,7 @@ export function thrustFromDb(db, openAt) {
   const over = db - openAt;
   if (over <= 0) return 0;
   const amount = Math.min(1, over / FULL_SCREAM_OVER_DB);
-  return amount ** 1.65;
+  return amount ** 1.25;
 }
 
 export function createGate() {
@@ -57,7 +57,7 @@ export function createGate() {
       const index = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.6));
       floorDb = sorted[index];
     }
-    floorDb = Math.max(-78, Math.min(-30, floorDb));
+    floorDb = Math.max(-78, Math.min(-32, floorDb));
     open = false;
     pendingOpen = 0;
     pendingClose = 0;

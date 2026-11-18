@@ -181,7 +181,17 @@ function updateHud() {
   if (liveTimer % 40 === 0) {
     live.textContent = `${formatted.label}, ${zone.name}`;
   }
-  if (flight.thrust > 0.22) hint.hidden = true;
+  if (flight.falling) {
+    hint.textContent = 'Falling...';
+    hint.classList.add('is-falling');
+    hint.hidden = false;
+  } else if (flight.thrust > 0.08) {
+    hint.hidden = true;
+  } else {
+    hint.textContent = usingFallback ? 'Hold to climb!' : 'Scream to climb!';
+    hint.classList.remove('is-falling');
+    hint.hidden = false;
+  }
 }
 
 function meterPosition(db) {
@@ -213,7 +223,7 @@ function readDb() {
 }
 
 function demandFor(dt) {
-  if (usingFallback) return holding || spaceHeld ? 0.62 : 0;
+  if (usingFallback) return holding || spaceHeld ? 0.85 : 0;
   const status = gate.update(readDb(), dt);
   paintMeter(status);
   return status.thrust;
@@ -236,9 +246,13 @@ function finish(reason) {
   apexUnit.textContent = formatted.unit;
   apexTitle.textContent = info.title;
   apexTag.textContent = info.tagline;
-  let note = reason === 'bail'
-    ? 'You bailed. The altitude is whatever you had already screamed for.'
-    : 'The scream is over.';
+  let note = reason === 'finish'
+    ? 'You finished. The score is the highest point you reached.'
+    : flight.endReason === 'silence'
+      ? 'A long pause ended the run. The score is your highest point.'
+      : flight.endReason === 'pad'
+        ? 'Back on the pad. The score is your highest point.'
+        : 'The score is your highest point.';
   if (flight.launched) {
     const result = leaderboard.noteApex(run);
     if (result.isBest) {
@@ -246,6 +260,8 @@ function finish(reason) {
       note = result.previous
         ? `New personal best. Previous was ${formatAltitude(result.previous.altitudeM).label}.`
         : 'First flight logged on this device. That is the best, by default.';
+      if (flight.endReason === 'silence') note += ' A long pause ended the run.';
+      else if (flight.endReason === 'pad') note += ' You came back to the pad.';
       bestPill.hidden = false;
       bestPill.textContent = `Best ${formatted.label}`;
       renderer.burst(1.15);
@@ -281,7 +297,9 @@ function beginFlight() {
   mode = 'flight';
   show('flight');
   hint.hidden = false;
-  hint.textContent = usingFallback ? 'HOLD' : 'SCREAM';
+  hint.classList.add('is-cue');
+  hint.classList.remove('is-falling');
+  hint.textContent = usingFallback ? 'Hold to climb!' : 'Scream to climb!';
   updateHud();
 }
 
@@ -334,7 +352,7 @@ async function onStart() {
         usingFallback = true;
         holdBtn.hidden = false;
         hint.hidden = false;
-        hint.textContent = 'HOLD';
+        hint.textContent = 'Hold to climb!';
         showToast('Mic ended — hold to thrust');
       });
     }
@@ -416,7 +434,7 @@ bailBtn.addEventListener('click', () => {
     show('start');
     return;
   }
-  finish('bail');
+  finish('finish');
 });
 downloadBtn.addEventListener('click', () => {
   if (downloadBtn.disabled) return;
