@@ -41,7 +41,7 @@ Open http://localhost:8080/
 
 ## Global leaderboard
 
-Submitted scores go to a public [npoint.io](https://www.npoint.io) document (`js/board-config.js`). There is no secret key. The document id is public, so the list can be read from GitHub Pages, and a determined person could overwrite it. The game still drops scores that are higher than a full scream could reach in the recorded flight time, rejects short or rude nicknames, and submits each run only once.
+Submitted scores go to a public [npoint.io](https://www.npoint.io) document (`js/board-config.js`). There is no secret key. The document id is public, so the list can be read from GitHub Pages, and a determined person could overwrite it. The game still drops scores that are higher than a full scream could reach in the recorded flight time, rejects short or rude nicknames, and submits each run only once. The page shows the top 5 runs and the top 5 countries. The document keeps at most the top 50, and one nickname in a country keeps only its best run.
 
 Personal bests stay in this browser. The global board is the **Leaderboard** button.
 

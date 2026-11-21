@@ -529,12 +529,8 @@ function paintBoard(summary) {
     row.append(who, score);
     boardCountries.append(row);
   });
-  if (summary.rank) {
-    const countryBit = summary.countryRank ? ` · #${summary.countryRank} for ${run.country}` : '';
-    boardYou.textContent = `You are #${summary.rank} worldwide${countryBit}.`;
-  } else {
-    boardYou.textContent = 'Submit a run to see your rank.';
-  }
+  boardYou.hidden = !(summary.rank > 5);
+  boardYou.textContent = summary.rank > 5 ? `Your rank: #${summary.rank}` : '';
 }
 
 async function refreshBoard() {
@@ -542,7 +538,7 @@ async function refreshBoard() {
   try {
     const summary = await loadGlobalBoard(run?.id || '');
     paintBoard(summary);
-    boardNote.textContent = `${summary.total} scored run${summary.total === 1 ? '' : 's'} on the shared board.`;
+    boardNote.textContent = '';
     if (summary.rank && run) {
       run.globalRank = summary.rank;
       renderCard();
@@ -588,10 +584,16 @@ async function onSubmitGlobal() {
   }
   localStorage.setItem(NICK_KEY, result.entry.nickname);
   rememberSubmission(run.id);
-  run.globalRank = result.board.rank;
-  renderCard();
   const clamped = result.clamped ? ' The height was limited to what that flight time can reach.' : '';
-  submitStatus.textContent = `You're #${result.board.rank} worldwide${result.board.countryRank ? ` and #${result.board.countryRank} for ${result.entry.country}` : ''}.${clamped}`;
+  if (result.posted && result.board.rank) {
+    run.globalRank = result.board.rank;
+    renderCard();
+    submitStatus.textContent = `You're #${result.board.rank} worldwide.${clamped}`;
+  } else if (result.reason === 'lower') {
+    submitStatus.textContent = 'A higher run for this nickname is already on the board.';
+  } else {
+    submitStatus.textContent = 'This run did not make the top 50.';
+  }
   submitGlobal.disabled = true;
 }
 

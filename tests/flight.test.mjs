@@ -4,7 +4,7 @@ import { createGate, rmsToDbfs, simPercentToDb, thrustFromDb } from '../js/gate.
 import { createLeaderboard } from '../js/leaderboard.js';
 import { altitudeCurve, createFlight, maxHonestAltitude, resetFlight, stepFlight } from '../js/physics.js';
 import { sanitizeNickname } from '../js/nicknames.js';
-import { prepareSubmission, summarizeBoard } from '../js/remote-board.js';
+import { compactRuns, prepareSubmission, summarizeBoard } from '../js/remote-board.js';
 import { createStore } from '../js/storage.js';
 import { sanitizePlace, shareIntent, shareLine } from '../js/share.js';
 import { DISTANCE, formatAltitude, titleFor } from '../js/zones.js';
@@ -191,6 +191,41 @@ const summary = summarizeBoard([
 ], 'bbbbbbbb');
 assert(summary.rank === 2 && summary.countryRank === 2, `ranks ${summary.rank}/${summary.countryRank}`);
 assert(summary.runs[0].nickname === 'Ada', 'highest run is first');
+const many = [];
+for (let i = 0; i < 8; i += 1) {
+  many.push({
+    id: `player${i}x`,
+    nickname: `Pilot${i}`,
+    country: `Place${i}`,
+    flag: '🇯🇵',
+    altitudeM: 1000 + i * 100,
+    elapsedSec: 30,
+    title: 'Cloud puncher',
+    at: `2026-01-0${i + 1}T00:00:00.000Z`,
+  });
+}
+many.push({ ...many[3], id: 'player3low', altitudeM: 50, at: '2026-02-01T00:00:00.000Z' });
+const top = summarizeBoard(many, 'player1x');
+assert(top.runs.length === 5 && top.countries.length === 5, `shown ${top.runs.length}/${top.countries.length}`);
+assert(top.rank === 7, `rank outside the five is ${top.rank}`);
+assert(!top.runs.some((entry) => entry.id === 'player1x'), 'outside runs are not an extra row');
+const kept = compactRuns(many);
+assert(kept.length === 8, `deduped count ${kept.length}`);
+assert(kept.find((entry) => entry.nickname === 'Pilot3').altitudeM === 1300, 'nickname keeps its best');
+const overflow = [];
+for (let i = 0; i < 60; i += 1) {
+  overflow.push({
+    id: `overflow${i}xx`,
+    nickname: `Name${i}`,
+    country: 'Kenya',
+    flag: '🇰🇪',
+    altitudeM: 1000 + i,
+    elapsedSec: 30,
+    title: 'Cloud puncher',
+    at: '2026-03-01T00:00:00.000Z',
+  });
+}
+assert(compactRuns(overflow).length === 50, 'storage stays at 50');
 assert(decodeURIComponent(shareIntent(line).split('text=')[1]) === line, 'intent text');
 assert(sanitizePlace('  Côte d\'Ivoire \n ').length <= 40, 'place length');
 assert(!sanitizePlace('  Japan \n ').includes('\n'), 'place newline');

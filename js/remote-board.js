@@ -3,8 +3,29 @@ import { sanitizeNickname } from './nicknames.js';
 import { maxHonestAltitude } from './physics.js';
 import { sanitizePlace } from './share.js';
 
-const TOP_RUNS = 20;
-const STORED_RUNS = 80;
+const SHOWN = 5;
+const STORED_RUNS = 50;
+
+function playerKey(entry) {
+  return `${entry.nickname.toLowerCase()}|${entry.country.toLowerCase()}`;
+}
+
+/** One best run per nickname and country, highest first, never more than the stored cap. */
+export function compactRuns(rawRuns) {
+  const best = new Map();
+  for (const raw of rawRuns || []) {
+    const entry = cleanEntry(raw);
+    if (!entry) continue;
+    const key = playerKey(entry);
+    const prev = best.get(key);
+    if (!prev || entry.altitudeM > prev.altitudeM || (entry.altitudeM === prev.altitudeM && entry.at < prev.at)) {
+      best.set(key, entry);
+    }
+  }
+  return [...best.values()]
+    .sort((a, b) => b.altitudeM - a.altitudeM || a.at.localeCompare(b.at))
+    .slice(0, STORED_RUNS);
+}
 
 function cleanEntry(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -64,15 +85,7 @@ export function prepareSubmission(raw) {
 }
 
 export function summarizeBoard(rawRuns, ownId) {
-  const runs = [];
-  const seen = new Set();
-  for (const raw of rawRuns || []) {
-    const entry = cleanEntry(raw);
-    if (!entry || seen.has(entry.id)) continue;
-    seen.add(entry.id);
-    runs.push(entry);
-  }
-  runs.sort((a, b) => b.altitudeM - a.altitudeM || a.at.localeCompare(b.at));
+  const runs = compactRuns(rawRuns);
   const rank = ownId ? runs.findIndex((entry) => entry.id === ownId) + 1 : 0;
   const byCountry = new Map();
   for (const entry of runs) {
@@ -86,8 +99,8 @@ export function summarizeBoard(rawRuns, ownId) {
     : 0;
   return {
     source: 'remote',
-    runs: runs.slice(0, TOP_RUNS),
-    countries: countries.slice(0, TOP_RUNS),
+    runs: runs.slice(0, SHOWN),
+    countries: countries.slice(0, SHOWN),
     rank,
     countryRank,
     total: runs.length,
@@ -119,21 +132,27 @@ export async function submitGlobalRun(raw) {
   const prepared = prepareSubmission(raw);
   if (!prepared.ok) return prepared;
   const entry = prepared.entry;
+  const key = playerKey(entry);
   let saved = false;
+  let reason = 'posted';
   for (let attempt = 0; attempt < 4 && !saved; attempt += 1) {
     const existing = await readRuns();
-    if (existing.some((item) => item && item.id === entry.id)) {
+    const already = compactRuns(existing).find((item) => item.id === entry.id);
+    if (already) {
       saved = true;
+      reason = 'posted';
       break;
     }
-    const runs = [...existing, entry]
-      .sort((a, b) => (Number(b.altitudeM) || 0) - (Number(a.altitudeM) || 0))
-      .slice(0, STORED_RUNS);
+    const runs = compactRuns([...existing, entry]);
+    const kept = runs.find((item) => playerKey(item) === key);
+    reason = !kept ? 'cutoff' : kept.id === entry.id ? 'posted' : 'lower';
     await writeRuns(runs);
-    const check = await readRuns();
-    saved = check.some((item) => item && item.id === entry.id);
+    const check = compactRuns(await readRuns());
+    const onBoard = check.find((item) => playerKey(item) === key);
+    saved = !kept || (Boolean(onBoard) && onBoard.altitudeM + 0.5 >= kept.altitudeM);
   }
   if (!saved) return { ok: false, error: 'Someone else posted at the same moment. Try again.' };
   const board = await loadGlobalBoard(entry.id);
-  return { ok: true, entry, clamped: prepared.clamped, board };
+  const posted = reason === 'posted' && board.rank > 0;
+  return { ok: true, entry, clamped: prepared.clamped, posted, reason, board };
 }
