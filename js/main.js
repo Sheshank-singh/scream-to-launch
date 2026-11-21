@@ -2,7 +2,7 @@ import { OTHER_PLACE } from './config.js';
 import { countryByCode, countryByName, searchCountries } from './countries.js';
 import { createAudio, MIC_CONSTRAINTS } from './audio.js';
 import { createGate, dbToSimPercent, simPercentToDb } from './gate.js';
-import { createLeaderboard } from './leaderboard.js';
+import { createLeaderboard, loadGlobalBoard, submitGlobalRun } from './leaderboard.js';
 import { createFlight, resetFlight, stepFlight } from './physics.js';
 import { createRenderer } from './render.js';
 import { drawShareCard, placeLabel, sanitizePlace, shareIntent, shareLine } from './share.js';
@@ -55,6 +55,16 @@ const downloadBtn = document.querySelector('#download');
 const againBtn = document.querySelector('#again');
 const bestsList = document.querySelector('#bests-list');
 const bestsNote = document.querySelector('#bests-note');
+const boardScreen = document.querySelector('#board');
+const boardRuns = document.querySelector('#board-runs');
+const boardCountries = document.querySelector('#board-countries');
+const boardYou = document.querySelector('#board-you');
+const boardNote = document.querySelector('#board-note');
+const nicknameInput = document.querySelector('#nickname');
+const submitGlobal = document.querySelector('#submit-global');
+const submitStatus = document.querySelector('#submit-status');
+const NICK_KEY = 'scream-to-launch:nickname';
+const SENT_KEY = 'scream-to-launch:submitted-runs';
 
 const audio = createAudio();
 const gate = createGate();
@@ -82,6 +92,7 @@ function show(screen) {
   startScreen.hidden = screen !== 'start';
   resultsScreen.hidden = screen !== 'results';
   bestsScreen.hidden = screen !== 'bests';
+  boardScreen.hidden = screen !== 'board';
   const flying = screen === 'flight';
   const livePad = flying || screen === 'calibrating';
   hud.hidden = !livePad;
@@ -130,6 +141,7 @@ function renderCard() {
     tagline: run.tagline,
     country: choice?.name || '',
     flag: choice?.flag || '',
+    rank: run.globalRank || 0,
   });
   const ready = Boolean(choice?.name);
   downloadBtn.disabled = !ready;
@@ -139,6 +151,7 @@ function renderCard() {
       altitudeLabel: formatted.label,
       country: choice.name,
       flag: choice.flag,
+      rank: run.globalRank || 0,
     }));
     shareX.setAttribute('aria-disabled', 'false');
   } else {
@@ -211,7 +224,8 @@ function commitCountry() {
   run.country = choice.name;
   run.countryCode = choice.code;
   run.flag = choice.flag;
-  const line = result.countryBest ? `New best for ${placeLabel(choice)}.` : `Logged for ${placeLabel(choice)}.`;
+  const named = placeLabel({ country: choice.name, flag: choice.flag });
+  const line = result.countryBest ? `New best for ${named}.` : `Logged for ${named}.`;
   apexNote.textContent = `${run.scoreNote || ''} ${line} Saved on this device.`.trim();
 }
 
@@ -319,6 +333,8 @@ function finish(reason) {
     countryCode: '',
     flag: '',
     at: new Date().toISOString(),
+    elapsedSec: flight.time,
+    globalRank: 0,
   };
   const formatted = formatAltitude(altitude);
   apexValue.textContent = formatted.value;
@@ -363,6 +379,11 @@ function finish(reason) {
   show('results');
   renderCard();
   if (currentCountry()) commitCountry();
+  const sent = alreadySubmitted(run.id);
+  submitGlobal.disabled = sent;
+  submitStatus.textContent = sent
+    ? 'This run is already on the board.'
+    : 'Add a nickname and country, then submit. One post per run.';
 }
 
 function beginFlight() {
@@ -454,6 +475,126 @@ function text(tag, className, value) {
   return node;
 }
 
+function submittedIds() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SENT_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberSubmission(id) {
+  const ids = submittedIds().filter((item) => item !== id);
+  ids.push(id);
+  localStorage.setItem(SENT_KEY, JSON.stringify(ids.slice(-40)));
+}
+
+function alreadySubmitted(id) {
+  return submittedIds().includes(id);
+}
+
+function paintBoard(summary) {
+  boardRuns.replaceChildren();
+  boardCountries.replaceChildren();
+  if (!summary.runs.length) {
+    boardRuns.append(text('p', 'empty', 'No runs yet. Finish a flight and submit it.'));
+  }
+  summary.runs.forEach((entry, index) => {
+    const row = document.createElement('article');
+    row.className = entry.id === run?.id ? 'best-row is-you' : 'best-row';
+    const who = document.createElement('div');
+    who.append(
+      text('strong', '', `${index + 1}. ${entry.nickname}`),
+      text('span', '', `${placeLabel(entry)} · ${entry.title}`),
+    );
+    const score = document.createElement('div');
+    score.className = 'best-row-alt';
+    score.append(text('span', '', formatAltitude(entry.altitudeM).label));
+    row.append(who, score);
+    boardRuns.append(row);
+  });
+  summary.countries.forEach((entry, index) => {
+    const row = document.createElement('article');
+    const yours = run?.country && entry.country === run.country;
+    row.className = yours ? 'best-row is-you' : 'best-row';
+    const who = document.createElement('div');
+    who.append(
+      text('strong', '', `${index + 1}. ${placeLabel(entry)}`),
+      text('span', '', entry.nickname),
+    );
+    const score = document.createElement('div');
+    score.className = 'best-row-alt';
+    score.append(text('span', '', formatAltitude(entry.altitudeM).label));
+    row.append(who, score);
+    boardCountries.append(row);
+  });
+  if (summary.rank) {
+    const countryBit = summary.countryRank ? ` · #${summary.countryRank} for ${run.country}` : '';
+    boardYou.textContent = `You are #${summary.rank} worldwide${countryBit}.`;
+  } else {
+    boardYou.textContent = 'Submit a run to see your rank.';
+  }
+}
+
+async function refreshBoard() {
+  boardNote.textContent = 'Loading…';
+  try {
+    const summary = await loadGlobalBoard(run?.id || '');
+    paintBoard(summary);
+    boardNote.textContent = `${summary.total} scored run${summary.total === 1 ? '' : 's'} on the shared board.`;
+    if (summary.rank && run) {
+      run.globalRank = summary.rank;
+      renderCard();
+    }
+  } catch (error) {
+    boardNote.textContent = error?.message || 'The board is unreachable.';
+  }
+}
+
+let boardReturn = 'start';
+
+function openBoard() {
+  boardReturn = mode === 'results' ? 'results' : 'start';
+  mode = 'board';
+  show('board');
+  refreshBoard();
+}
+
+async function onSubmitGlobal() {
+  if (!run || submitGlobal.disabled) return;
+  if (alreadySubmitted(run.id)) {
+    submitStatus.textContent = 'This run is already on the board.';
+    return;
+  }
+  const choice = currentCountry();
+  submitGlobal.disabled = true;
+  submitStatus.textContent = 'Sending…';
+  const result = await submitGlobalRun({
+    id: run.id,
+    nickname: nicknameInput.value,
+    country: choice?.name || '',
+    countryCode: choice?.code || '',
+    flag: choice?.flag || '',
+    altitudeM: run.altitudeM,
+    title: run.title,
+    elapsedSec: run.elapsedSec,
+    at: run.at,
+  });
+  submitGlobal.disabled = false;
+  if (!result.ok) {
+    submitStatus.textContent = result.error;
+    return;
+  }
+  localStorage.setItem(NICK_KEY, result.entry.nickname);
+  rememberSubmission(run.id);
+  run.globalRank = result.board.rank;
+  renderCard();
+  const clamped = result.clamped ? ' The height was limited to what that flight time can reach.' : '';
+  submitStatus.textContent = `You're #${result.board.rank} worldwide${result.board.countryRank ? ` and #${result.board.countryRank} for ${result.entry.country}` : ''}.${clamped}`;
+  submitGlobal.disabled = true;
+}
+
 function openBests() {
   const board = leaderboard.overview();
   bestsList.replaceChildren();
@@ -494,6 +635,15 @@ function openBests() {
 }
 
 startBtn.addEventListener('click', onStart);
+document.querySelector('#open-board').addEventListener('click', openBoard);
+document.querySelector('#results-board').addEventListener('click', openBoard);
+document.querySelector('#board-refresh').addEventListener('click', refreshBoard);
+document.querySelector('#board-back').addEventListener('click', () => {
+  mode = boardReturn === 'results' && run ? 'results' : 'ready';
+  show(mode === 'results' ? 'results' : 'start');
+});
+submitGlobal.addEventListener('click', onSubmitGlobal);
+nicknameInput.value = localStorage.getItem(NICK_KEY) || '';
 document.querySelector('#open-bests').addEventListener('click', openBests);
 document.querySelector('#results-bests').addEventListener('click', openBests);
 document.querySelector('#bests-back').addEventListener('click', () => {

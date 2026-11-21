@@ -8,8 +8,10 @@ export function placeLabel({ country, flag }) {
   return flag ? `${country} ${flag}` : country;
 }
 
-export function shareLine({ altitudeLabel, country, flag }) {
-  return `I screamed my rocket to ${altitudeLabel} from ${placeLabel({ country, flag })} 🚀 Can you beat me? 👇\n${PAGE_URL}`;
+export function shareLine({ altitudeLabel, country, flag, rank }) {
+  const place = placeLabel({ country, flag });
+  const ranked = Number.isInteger(rank) && rank > 0 ? ` Ranked #${rank} worldwide.` : '';
+  return `I screamed my rocket to ${altitudeLabel} from ${place} 🚀${ranked} Can you beat me? 👇\n${PAGE_URL}`;
 }
 
 export function shareIntent(text) {
@@ -103,7 +105,7 @@ function fitSize(ctx, text, weight, maxWidth, start, min) {
 }
 
 /** Draw the 1200×675 share card. Stars are seeded so redraws don't flicker. */
-export function drawShareCard(canvas, { value, unit, title, tagline, country, flag }) {
+export function drawShareCard(canvas, { value, unit, title, tagline, country, flag, rank }) {
   const ctx = canvas.getContext('2d');
   const width = 1200;
   const height = 675;
@@ -178,10 +180,17 @@ export function drawShareCard(canvas, { value, unit, title, tagline, country, fl
   ctx.font = `600 28px ${FONT}, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"`;
   const place = country ? `from ${placeLabel({ country, flag })}` : 'pick a country';
   ctx.fillText(place, 72, titleY + 48);
+  let tagY = titleY + 92;
+  if (Number.isInteger(rank) && rank > 0) {
+    ctx.fillStyle = '#ffc857';
+    ctx.font = `700 24px ${FONT}`;
+    ctx.fillText(`Ranked #${rank} worldwide`, 72, titleY + 86);
+    tagY = titleY + 122;
+  }
 
   ctx.fillStyle = '#9aa6bd';
   ctx.font = `500 22px ${FONT}`;
-  ctx.fillText(tagline, 72, titleY + 92);
+  ctx.fillText(tagline, 72, tagY);
 
   ctx.strokeStyle = 'rgba(255,255,255,0.12)';
   ctx.beginPath();

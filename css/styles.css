@@ -255,7 +255,8 @@ h2 {
 .country-picker { position: relative; }
 
 .country-picker input,
-.other-wrap input {
+.other-wrap input,
+.nick-input {
   width: 100%;
   border-radius: 12px;
   border: 1px solid var(--line);
@@ -640,6 +641,17 @@ body.has-sim .meter {
   display: block;
   font-weight: 500;
   color: var(--faint);
+}
+
+.best-row.is-you {
+  border-color: #ffc857;
+  background: rgba(255, 200, 87, 0.12);
+}
+
+#board h3 {
+  margin: 12px 0 0;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
 }
 
 .empty { color: var(--muted); }

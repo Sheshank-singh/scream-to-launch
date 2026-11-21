@@ -1,4 +1,7 @@
+import { loadGlobalBoard, submitGlobalRun } from './remote-board.js';
 import { createStore } from './storage.js';
+
+export { loadGlobalBoard, submitGlobalRun };
 
 /**
  * Country leaderboard adapter.
@@ -6,6 +9,9 @@ import { createStore } from './storage.js';
  * The game records scores only through this module. Today every method is
  * local: personal bests live in localStorage on this browser, and each
  * country board contains at most that player's own best.
+ *
+ * The shared worldwide board is separate. `submitGlobalRun` and
+ * `loadGlobalBoard` talk to the public npoint document in board-config.js.
  *
  * Older saves used `city`. `storage.js` copies those onto `country` when
  * they are read, so a best recorded before the country picker still shows.

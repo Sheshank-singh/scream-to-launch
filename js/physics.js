@@ -41,6 +41,13 @@ const THRUST_DEADZONE = 0.045;
 const SILENCE_LIMIT = 9;
 const FALL_PER_SECOND = 1.15;
 
+/** Highest altitude a full scream could reach in this many seconds, plus a little slack. */
+export function maxHonestAltitude(elapsedSeconds) {
+  const elapsed = Number(elapsedSeconds);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return altitudeCurve(1);
+  return altitudeCurve(Math.min(MAX_CLOCK, elapsed + 4));
+}
+
 export function altitudeCurve(t) {
   const keys = ALTITUDE_KEYS;
   if (t <= 0) return 0;

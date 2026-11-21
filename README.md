@@ -39,6 +39,12 @@ Open http://localhost:8080/
 - `?sim=1` adds a volume slider (and **Yell** / **Quiet**, or hold space) so you can fly without a mic.
 - `?fallback=1` skips the mic and uses hold-to-thrust.
 
+## Global leaderboard
+
+Submitted scores go to a public [npoint.io](https://www.npoint.io) document (`js/board-config.js`). There is no secret key. The document id is public, so the list can be read from GitHub Pages, and a determined person could overwrite it. The game still drops scores that are higher than a full scream could reach in the recorded flight time, rejects short or rude nicknames, and submits each run only once.
+
+Personal bests stay in this browser. The global board is the **Leaderboard** button.
+
 ## Country leaderboard
 
 Bests are stored in this browser, one per country. `js/leaderboard.js` is the only module that reads and writes them. A shared board can replace `noteApex`, `submitRun`, `countryBoard`, and `overview` later; the rest of the game already talks to that adapter and not to `localStorage` directly. Older saves that used a city name are kept and shown as that place.

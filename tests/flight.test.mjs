@@ -2,7 +2,9 @@ import { COUNTRIES, flagEmoji, searchCountries } from '../js/countries.js';
 import { STORAGE_KEY } from '../js/config.js';
 import { createGate, rmsToDbfs, simPercentToDb, thrustFromDb } from '../js/gate.js';
 import { createLeaderboard } from '../js/leaderboard.js';
-import { altitudeCurve, createFlight, resetFlight, stepFlight } from '../js/physics.js';
+import { altitudeCurve, createFlight, maxHonestAltitude, resetFlight, stepFlight } from '../js/physics.js';
+import { sanitizeNickname } from '../js/nicknames.js';
+import { prepareSubmission, summarizeBoard } from '../js/remote-board.js';
 import { createStore } from '../js/storage.js';
 import { sanitizePlace, shareIntent, shareLine } from '../js/share.js';
 import { DISTANCE, formatAltitude, titleFor } from '../js/zones.js';
@@ -166,6 +168,29 @@ assert(
   line,
 );
 assert(shareIntent(line).startsWith('https://x.com/intent/post?text='), 'intent url');
+const ranked = shareLine({ altitudeLabel: '128 km', country: 'India', flag: '🇮🇳', rank: 4 });
+assert(ranked.includes('Ranked #4 worldwide.'), ranked);
+assert(maxHonestAltitude(12) >= DISTANCE.karman && maxHonestAltitude(12) < DISTANCE.iss, '12s cannot claim the ISS');
+const capped = prepareSubmission({
+  id: 'run-12345678',
+  nickname: 'Nova',
+  country: 'India',
+  countryCode: 'IN',
+  flag: '🇮🇳',
+  altitudeM: DISTANCE.pluto,
+  elapsedSec: 12,
+  title: 'Nope',
+  at: '2026-01-01T00:00:00.000Z',
+});
+assert(capped.ok && capped.clamped && capped.entry.altitudeM < DISTANCE.iss, 'impossible height is clamped');
+assert(!sanitizeNickname('shit').ok, 'profanity blocked');
+assert(!prepareSubmission({ ...capped.entry, nickname: 'shit', altitudeM: 100, elapsedSec: 12 }).ok, 'rude nick rejected');
+const summary = summarizeBoard([
+  { id: 'aaaaaaaa', nickname: 'Ada', country: 'India', flag: '🇮🇳', altitudeM: 5000, elapsedSec: 20, title: 'Cloud puncher', at: '2026-01-01T00:00:00.000Z' },
+  { id: 'bbbbbbbb', nickname: 'Bea', country: 'Japan', flag: '🇯🇵', altitudeM: 1000, elapsedSec: 10, title: 'Window-rattler', at: '2026-01-02T00:00:00.000Z' },
+], 'bbbbbbbb');
+assert(summary.rank === 2 && summary.countryRank === 2, `ranks ${summary.rank}/${summary.countryRank}`);
+assert(summary.runs[0].nickname === 'Ada', 'highest run is first');
 assert(decodeURIComponent(shareIntent(line).split('text=')[1]) === line, 'intent text');
 assert(sanitizePlace('  Côte d\'Ivoire \n ').length <= 40, 'place length');
 assert(!sanitizePlace('  Japan \n ').includes('\n'), 'place newline');
